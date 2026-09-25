@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model DriveFile {
+  id             String   @id // Google Drive File ID
+  name           String
+  mimeType       String
+  size           BigInt
+  thumbnailUrl   String?  // Trích xuất từ Google Drive thumbnailLink
+  createdTime    DateTime
+  modifiedTime   DateTime
+  width          Int?
+  height         Int?
+  durationMillis BigInt? // Cho video nếu có
+  isTrash        Boolean  @default(false)
+  driveFolderId  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([driveFolderId])
+  @@index([createdTime])
+  @@index([mimeType])
+}
+
+model SyncState {
+  id             Int      @id @default(autoincrement())
+  startPageToken String?
+  lastSyncAt     DateTime @default(now())
+}
