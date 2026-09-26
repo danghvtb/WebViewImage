@@ -40,15 +40,11 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => {
-  const initialToken = typeof window !== 'undefined' ? getSavedAccessToken() : null;
-  const initialUser = typeof window !== 'undefined' ? getSavedUserProfile() : null;
-  const initialClientId = typeof window !== 'undefined' ? getSavedClientId() : '';
-
   return {
-    accessToken: initialToken,
-    user: initialUser,
-    clientId: initialClientId,
-    isLoggedIn: Boolean(initialToken && initialUser),
+    accessToken: null,
+    user: null,
+    clientId: '',
+    isLoggedIn: false,
 
     rootFolder: null,
     currentFolder: null,

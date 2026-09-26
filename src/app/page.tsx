@@ -17,6 +17,7 @@ import { DriveMediaItem } from '@/lib/types';
 import {
   getSavedAccessToken,
   getSavedUserProfile,
+  getSavedClientId,
 } from '@/lib/google-auth';
 import {
   getOrCreateAppRootFolder,
@@ -39,6 +40,11 @@ export default function HomePage() {
   // Automatically restore session and load folder on mount
   useEffect(() => {
     const initSession = async () => {
+      const savedClientId = getSavedClientId();
+      if (savedClientId) {
+        useAuthStore.getState().setClientId(savedClientId);
+      }
+
       const token = getSavedAccessToken();
       const user = getSavedUserProfile();
 

@@ -64,6 +64,9 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     });
   }, [allItems, filter, searchQuery]);
 
+  // Compute allItemIds for multi-selection at top level (Rules of Hooks)
+  const allItemIds = useMemo(() => filteredItems.map((item) => item.id), [filteredItems]);
+
   // Notify parent of total items for timeline scrubber
   useEffect(() => {
     if (onItemsLoaded && filteredItems.length > 0) {
@@ -148,8 +151,6 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
       </div>
     );
   }
-
-  const allItemIds = useMemo(() => filteredItems.map((item) => item.id), [filteredItems]);
 
   return (
     <div
