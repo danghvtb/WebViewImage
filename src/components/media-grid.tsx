@@ -55,9 +55,6 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
 
   // Pinch-to-zoom gesture on touch devices to adjust columns without browser zoom conflict
   useEffect(() => {
-    const element = parentRef.current;
-    if (!element) return;
-
     // 1. iOS Safari WebKit gesture events (completely intercepts native page viewport zoom)
     const handleGestureStart = (e: any) => {
       e.preventDefault();
@@ -69,7 +66,7 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
       if (pinchTriggeredRef.current) return;
 
       const scale = e.scale;
-      if (scale > 1.2) {
+      if (scale > 1.15) {
         // Pinch OUT -> Zoom IN -> Fewer columns (1 or 2)
         pinchTriggeredRef.current = true;
         setMobileColumnsCount((prev) => {
@@ -79,8 +76,8 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
         });
         setTimeout(() => {
           pinchTriggeredRef.current = false;
-        }, 320);
-      } else if (scale < 0.8) {
+        }, 280);
+      } else if (scale < 0.85) {
         // Pinch IN -> Zoom OUT -> More columns (3 or 4)
         pinchTriggeredRef.current = true;
         setMobileColumnsCount((prev) => {
@@ -90,7 +87,7 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
         });
         setTimeout(() => {
           pinchTriggeredRef.current = false;
-        }, 320);
+        }, 280);
       }
     };
 
@@ -99,9 +96,9 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
       pinchTriggeredRef.current = false;
     };
 
-    // 2. Android Chrome & Standard Touch Event Handling
+    // 2. Android Chrome & Standard Multi-Touch Handling (Attached to window)
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
+      if (e.touches.length >= 2) {
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         initialDistanceRef.current = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -110,41 +107,48 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        // Prevent default browser viewport zoom
-        e.preventDefault();
+      if (e.touches.length >= 2) {
+        // Always prevent default native browser zoom when 2+ fingers move
+        if (e.cancelable) {
+          e.preventDefault();
+        }
 
-        if (initialDistanceRef.current !== null) {
-          const t1 = e.touches[0];
-          const t2 = e.touches[1];
-          const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-          const delta = currentDist - initialDistanceRef.current;
-          const THRESHOLD = 35;
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
 
-          if (Math.abs(delta) > THRESHOLD && !pinchTriggeredRef.current) {
-            pinchTriggeredRef.current = true;
+        // If distance was not captured on touchstart, initialize it now
+        if (initialDistanceRef.current === null) {
+          initialDistanceRef.current = currentDist;
+          return;
+        }
 
-            if (delta > 0) {
-              // Fingers moving apart -> Zoom IN -> Fewer columns
-              setMobileColumnsCount((prev) => {
-                const next = Math.max(1, prev - 1);
-                showPinchToast(`Phóng to: ${next} cột`);
-                return next;
-              });
-            } else {
-              // Fingers moving together -> Zoom OUT -> More columns
-              setMobileColumnsCount((prev) => {
-                const next = Math.min(4, prev + 1);
-                showPinchToast(`Thu nhỏ: ${next} cột`);
-                return next;
-              });
-            }
+        const delta = currentDist - initialDistanceRef.current;
+        const THRESHOLD = 22; // Responsive and smooth on all Android screen densities
 
-            initialDistanceRef.current = currentDist;
-            setTimeout(() => {
-              pinchTriggeredRef.current = false;
-            }, 320);
+        if (Math.abs(delta) > THRESHOLD && !pinchTriggeredRef.current) {
+          pinchTriggeredRef.current = true;
+
+          if (delta > 0) {
+            // Fingers moving apart -> Zoom IN -> Fewer columns
+            setMobileColumnsCount((prev) => {
+              const next = Math.max(1, prev - 1);
+              showPinchToast(`Phóng to: ${next} cột`);
+              return next;
+            });
+          } else {
+            // Fingers moving together -> Zoom OUT -> More columns
+            setMobileColumnsCount((prev) => {
+              const next = Math.min(4, prev + 1);
+              showPinchToast(`Thu nhỏ: ${next} cột`);
+              return next;
+            });
           }
+
+          initialDistanceRef.current = currentDist;
+          setTimeout(() => {
+            pinchTriggeredRef.current = false;
+          }, 280);
         }
       }
     };
@@ -156,37 +160,25 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
       }
     };
 
-    // Document-level multi-touch interceptor: Prevents Android Chrome viewport zoom
-    const handleDocTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 1) {
-        e.preventDefault();
-      }
-    };
+    // Attach to window so touches on any part of screen (images, cards, gaps) are captured
+    window.addEventListener('gesturestart', handleGestureStart as any, { passive: false });
+    window.addEventListener('gesturechange', handleGestureChange as any, { passive: false });
+    window.addEventListener('gestureend', handleGestureEnd as any, { passive: false });
 
-    // iOS Safari gesture listeners
-    element.addEventListener('gesturestart', handleGestureStart as any, { passive: false });
-    element.addEventListener('gesturechange', handleGestureChange as any, { passive: false });
-    element.addEventListener('gestureend', handleGestureEnd as any, { passive: false });
-    document.addEventListener('gesturestart', handleGestureStart as any, { passive: false });
-
-    // Touch events
-    element.addEventListener('touchstart', handleTouchStart, { passive: true });
-    element.addEventListener('touchmove', handleTouchMove, { passive: false });
-    element.addEventListener('touchend', handleTouchEnd, { passive: true });
-    element.addEventListener('touchcancel', handleTouchEnd, { passive: true });
-    document.addEventListener('touchmove', handleDocTouchMove, { passive: false });
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
 
     return () => {
-      element.removeEventListener('gesturestart', handleGestureStart as any);
-      element.removeEventListener('gesturechange', handleGestureChange as any);
-      element.removeEventListener('gestureend', handleGestureEnd as any);
-      document.removeEventListener('gesturestart', handleGestureStart as any);
+      window.removeEventListener('gesturestart', handleGestureStart as any);
+      window.removeEventListener('gesturechange', handleGestureChange as any);
+      window.removeEventListener('gestureend', handleGestureEnd as any);
 
-      element.removeEventListener('touchstart', handleTouchStart);
-      element.removeEventListener('touchmove', handleTouchMove);
-      element.removeEventListener('touchend', handleTouchEnd);
-      element.removeEventListener('touchcancel', handleTouchEnd);
-      document.removeEventListener('touchmove', handleDocTouchMove);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
     };
   }, [setMobileColumnsCount, showPinchToast]);
 

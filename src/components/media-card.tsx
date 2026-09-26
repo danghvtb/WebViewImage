@@ -116,6 +116,7 @@ export const MediaCard = React.memo(function MediaCard({
 
   return (
     <div
+      style={{ touchAction: 'pan-y' }}
       className={`group relative aspect-square w-full overflow-hidden rounded-xl bg-[#171717] border transition-all duration-200 select-none cursor-pointer ${
         isSelected
           ? 'border-blue-500 ring-2 ring-blue-500/50 shadow-xl shadow-blue-500/20 scale-[0.98]'
@@ -154,7 +155,7 @@ export const MediaCard = React.memo(function MediaCard({
 
       {/* Skeleton Loading & Blur Placeholder */}
       {!imageLoaded && !imageError && (
-        <div className="absolute inset-0 bg-neutral-900 animate-pulse flex items-center justify-center">
+        <div className="absolute inset-0 bg-neutral-900 animate-pulse flex items-center justify-center pointer-events-none">
           {isVideo ? (
             <Film className="w-8 h-8 text-neutral-700 animate-pulse" />
           ) : (
@@ -170,12 +171,13 @@ export const MediaCard = React.memo(function MediaCard({
           alt={item.name}
           loading="lazy"
           decoding="async"
+          draggable={false}
           onLoad={() => setImageLoaded(true)}
           onError={() => {
             setImageError(true);
             setImageLoaded(true);
           }}
-          className={`h-full w-full object-cover transition-all duration-500 group-hover:scale-105 ${
+          className={`h-full w-full object-cover transition-all duration-500 group-hover:scale-105 pointer-events-none select-none ${
             imageLoaded ? 'opacity-100 filter-none' : 'opacity-0 blur-md'
           }`}
         />
