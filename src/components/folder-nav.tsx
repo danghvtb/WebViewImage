@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAuthStore } from '@/store/use-auth-store';
-import { createDriveSubFolder } from '@/lib/client-drive';
+import { createDriveSubFolder, deleteDriveFile } from '@/lib/client-drive';
 import {
   Folder,
   FolderPlus,
@@ -10,6 +10,7 @@ import {
   HardDrive,
   Loader2,
   FolderOpen,
+  Trash2,
 } from 'lucide-react';
 
 interface FolderNavProps {
@@ -23,6 +24,7 @@ export function FolderNav({ onFolderChanged }: FolderNavProps) {
     folderBreadcrumbs,
     navigateToBreadcrumb,
     subFolders,
+    setSubFolders,
     setCurrentFolder,
     addSubFolder,
     isLoggedIn,
@@ -133,17 +135,37 @@ export function FolderNav({ onFolderChanged }: FolderNavProps) {
             Thư mục con ({subFolders.length}):
           </span>
           {subFolders.map((sub) => (
-            <button
+            <div
               key={sub.id}
-              onClick={() => {
-                setCurrentFolder(sub);
-                onFolderChanged();
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#171717] hover:bg-[#222] border border-[#2a2a2a] hover:border-neutral-600 text-xs text-neutral-300 hover:text-white transition-all shrink-0 active:scale-95 group"
+              className="flex items-center rounded-lg bg-[#171717] hover:bg-[#202020] border border-[#2a2a2a] hover:border-neutral-600 transition-all shrink-0 group overflow-hidden"
             >
-              <Folder className="w-3.5 h-3.5 text-amber-400 group-hover:fill-amber-400/20" />
-              <span>{sub.name}</span>
-            </button>
+              <button
+                onClick={() => {
+                  setCurrentFolder(sub);
+                  onFolderChanged();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-neutral-300 hover:text-white transition-colors"
+              >
+                <Folder className="w-3.5 h-3.5 text-amber-400 group-hover:fill-amber-400/20" />
+                <span>{sub.name}</span>
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (!confirm(`Bạn có chắc muốn xóa thư mục "${sub.name}" khỏi Google Drive?`)) return;
+                  try {
+                    if (accessToken) await deleteDriveFile(sub.id, accessToken);
+                    setSubFolders(subFolders.filter((f) => f.id !== sub.id));
+                  } catch (err: any) {
+                    alert(`Xóa thư mục thất bại: ${err.message}`);
+                  }
+                }}
+                title="Xóa thư mục con này"
+                className="px-1.5 py-1 text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
           ))}
         </div>
       )}

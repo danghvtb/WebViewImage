@@ -234,3 +234,24 @@ export async function initClientResumableUpload(
 
   return uploadUrl;
 }
+
+/**
+ * Delete file from Google Drive and local IndexedDB cache
+ */
+export async function deleteDriveFile(fileId: string, accessToken: string): Promise<void> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok && res.status !== 404) {
+    const errText = await res.text();
+    throw new Error(`Xóa file thất bại (${res.status}): ${errText}`);
+  }
+
+  // Remove from local IndexedDB
+  await localDB.deleteFile(fileId);
+}
+

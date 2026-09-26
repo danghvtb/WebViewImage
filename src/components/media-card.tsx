@@ -9,7 +9,11 @@ import {
   formatBytes,
   formatDuration,
 } from '@/lib/thumbnail';
-import { Play, Download, Eye, Film, Image as ImageIcon } from 'lucide-react';
+import { Play, Download, Eye, Film, Image as ImageIcon, Trash2, Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '@/store/use-auth-store';
+import { deleteDriveFile } from '@/lib/client-drive';
+import { localDB } from '@/lib/indexed-db';
 
 interface MediaCardProps {
   item: DriveMediaItem;
@@ -22,14 +26,38 @@ export const MediaCard = React.memo(function MediaCard({
   index,
   onOpenLightbox,
 }: MediaCardProps) {
+  const queryClient = useQueryClient();
+  const { accessToken } = useAuthStore();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const isVideo = item.mimeType.startsWith('video/');
   const thumbnailUrl = getGridThumbnailUrl(item.thumbnailUrl, item.id, 500, 500);
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Bạn có chắc chắn muốn xóa "${item.name}" khỏi Google Drive?`)) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      if (accessToken) {
+        await deleteDriveFile(item.id, accessToken);
+      } else {
+        await localDB.deleteFile(item.id);
+      }
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+    } catch (err: any) {
+      alert(`Xóa file thất bại: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Handle video hover preview with small debounce to prevent unnecessary stream requests
   useEffect(() => {
@@ -123,15 +151,30 @@ export const MediaCard = React.memo(function MediaCard({
             {formatBytes(item.size)}
           </span>
 
-          <a
-            href={getOriginalDownloadUrl(item.id)}
-            download={item.name}
-            onClick={(e) => e.stopPropagation()}
-            title="Tải file gốc"
-            className="p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white/90 hover:text-white hover:bg-black/90 transition-colors border border-white/10"
-          >
-            <Download className="w-3.5 h-3.5" />
-          </a>
+          <div className="flex items-center gap-1.5">
+            <a
+              href={getOriginalDownloadUrl(item.id)}
+              download={item.name}
+              onClick={(e) => e.stopPropagation()}
+              title="Tải file gốc"
+              className="p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white/90 hover:text-white hover:bg-black/90 transition-colors border border-white/10"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </a>
+
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              title="Xóa tệp khỏi Google Drive"
+              className="p-1.5 rounded-full bg-black/60 backdrop-blur-md text-neutral-300 hover:text-red-400 hover:bg-red-950/70 transition-colors border border-white/10 disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-red-400" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Bottom Title Bar */}
