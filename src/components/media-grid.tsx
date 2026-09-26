@@ -9,7 +9,7 @@ import { DriveMediaItem } from '@/lib/types';
 import { localDB } from '@/lib/indexed-db';
 import { listDriveFolderMedia } from '@/lib/client-drive';
 import { MediaCard } from './media-card';
-import { Loader2, Upload, Sparkles, LogIn, FolderOpen } from 'lucide-react';
+import { Loader2, Upload, Sparkles, LogIn, FolderOpen, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface MediaGridProps {
   onOpenLightbox: (index: number) => void;
@@ -19,10 +19,24 @@ interface MediaGridProps {
 export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  const { columnsCount, columnDensity, filter, searchQuery, setUploadModalOpen } = useMediaStore();
+  const {
+    columnsCount,
+    columnDensity,
+    mobileColumnsCount,
+    setMobileColumnsCount,
+    selectedFileIds,
+    filter,
+    searchQuery,
+    setUploadModalOpen,
+  } = useMediaStore();
   const { isLoggedIn, accessToken, currentFolder, login, setIsConfigModalOpen } = useAuthStore();
 
   const [windowWidth, setWindowWidth] = useState<number>(1200);
+  const [pinchFeedback, setPinchFeedback] = useState<string | null>(null);
+  const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const initialDistanceRef = useRef<number | null>(null);
+  const pinchTriggeredRef = useRef<boolean>(false);
 
   useEffect(() => {
     setWindowWidth(window.innerWidth);
@@ -31,12 +45,90 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Responsive column count (mobile: 2 columns, tablet: 3, desktop: 4+)
+  const showPinchToast = useCallback((text: string) => {
+    setPinchFeedback(text);
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    feedbackTimeoutRef.current = setTimeout(() => {
+      setPinchFeedback(null);
+    }, 1200);
+  }, []);
+
+  // Pinch-to-zoom (pinch-in / pinch-out) gesture on touch devices to adjust columns
+  useEffect(() => {
+    const element = parentRef.current;
+    if (!element) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        initialDistanceRef.current = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        pinchTriggeredRef.current = false;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && initialDistanceRef.current !== null) {
+        // Prevent default browser viewport zoom when 2 fingers pinch inside gallery
+        e.preventDefault();
+
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const delta = currentDist - initialDistanceRef.current;
+        const THRESHOLD = 35; // Sensitive and smooth
+
+        if (Math.abs(delta) > THRESHOLD && !pinchTriggeredRef.current) {
+          pinchTriggeredRef.current = true;
+
+          if (delta > 0) {
+            // Pinch OUT (fingers moving apart) -> Zoom In -> Decrease columns
+            setMobileColumnsCount((prev) => {
+              const next = Math.max(1, prev - 1);
+              showPinchToast(`Phóng to: ${next} cột`);
+              return next;
+            });
+          } else {
+            // Pinch IN (fingers moving together) -> Zoom Out -> Increase columns
+            setMobileColumnsCount((prev) => {
+              const next = Math.min(4, prev + 1);
+              showPinchToast(`Thu nhỏ: ${next} cột`);
+              return next;
+            });
+          }
+
+          initialDistanceRef.current = currentDist;
+          setTimeout(() => {
+            pinchTriggeredRef.current = false;
+          }, 350);
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        initialDistanceRef.current = null;
+        pinchTriggeredRef.current = false;
+      }
+    };
+
+    element.addEventListener('touchstart', handleTouchStart, { passive: true });
+    element.addEventListener('touchmove', handleTouchMove, { passive: false });
+    element.addEventListener('touchend', handleTouchEnd, { passive: true });
+    element.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+    return () => {
+      element.removeEventListener('touchstart', handleTouchStart);
+      element.removeEventListener('touchmove', handleTouchMove);
+      element.removeEventListener('touchend', handleTouchEnd);
+      element.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [setMobileColumnsCount, showPinchToast]);
+
+  // Responsive column count (mobile: custom mobileColumnsCount from pinch/toggle, tablet: 3, desktop: 4+)
   const activeColumns = useMemo(() => {
     if (windowWidth < 640) {
-      if (columnDensity === 'large') return 1;
-      if (columnDensity === 'compact') return 3;
-      return 2;
+      return mobileColumnsCount;
     }
     if (windowWidth < 1024) {
       if (columnDensity === 'large') return 2;
@@ -44,7 +136,7 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
       return 3;
     }
     return columnsCount;
-  }, [windowWidth, columnDensity, columnsCount]);
+  }, [windowWidth, mobileColumnsCount, columnDensity, columnsCount]);
 
   // Query media items using Cache-First strategy:
   // 1. Read from IndexedDB immediately (instant 60fps)
@@ -227,6 +319,37 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
           );
         })}
       </div>
+
+      {/* Pinch Gesture Feedback Toast */}
+      {pinchFeedback && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-black/90 backdrop-blur-xl border border-white/20 text-white text-xs font-semibold shadow-2xl flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+          <span>{pinchFeedback}</span>
+        </div>
+      )}
+
+      {/* Mobile Column Quick Switcher (Tap or Pinch) */}
+      {windowWidth < 640 && selectedFileIds.length === 0 && (
+        <div className="fixed bottom-5 right-3 z-30 flex items-center bg-[#141414]/90 border border-neutral-700/80 backdrop-blur-xl rounded-full p-1 shadow-2xl animate-in fade-in">
+          {[1, 2, 3, 4].map((col) => (
+            <button
+              key={col}
+              onClick={() => {
+                setMobileColumnsCount(col);
+                showPinchToast(`Chia ${col} cột`);
+              }}
+              title={`${col} cột`}
+              className={`w-7 h-7 rounded-full text-xs font-semibold flex items-center justify-center transition-all ${
+                activeColumns === col
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/40 scale-105'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              {col}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

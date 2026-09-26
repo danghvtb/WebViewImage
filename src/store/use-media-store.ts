@@ -6,6 +6,7 @@ export type MediaFilter = 'all' | 'image' | 'video';
 interface MediaState {
   columnDensity: ColumnDensity;
   columnsCount: number;
+  mobileColumnsCount: number;
   filter: MediaFilter;
   searchQuery: string;
   lightboxIndex: number | null;
@@ -17,6 +18,7 @@ interface MediaState {
   lastSelectedIndex: number | null;
 
   setColumnDensity: (density: ColumnDensity) => void;
+  setMobileColumnsCount: (count: number | ((prev: number) => number)) => void;
   setFilter: (filter: MediaFilter) => void;
   setSearchQuery: (query: string) => void;
   setLightboxIndex: (index: number | null) => void;
@@ -45,6 +47,7 @@ const getColumnCountFromDensity = (density: ColumnDensity): number => {
 export const useMediaStore = create<MediaState>((set, get) => ({
   columnDensity: 'normal',
   columnsCount: 4,
+  mobileColumnsCount: 2,
   filter: 'all',
   searchQuery: '',
   lightboxIndex: null,
@@ -60,6 +63,11 @@ export const useMediaStore = create<MediaState>((set, get) => ({
       columnDensity: density,
       columnsCount: getColumnCountFromDensity(density),
     }),
+  setMobileColumnsCount: (count) =>
+    set((state) => ({
+      mobileColumnsCount:
+        typeof count === 'function' ? count(state.mobileColumnsCount) : count,
+    })),
   setFilter: (filter) => set({ filter }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setLightboxIndex: (lightboxIndex) => set({ lightboxIndex }),
