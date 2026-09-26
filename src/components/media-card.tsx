@@ -9,25 +9,33 @@ import {
   formatBytes,
   formatDuration,
 } from '@/lib/thumbnail';
-import { Play, Download, Eye, Film, Image as ImageIcon, Trash2, Loader2 } from 'lucide-react';
+import { Play, Download, Eye, Film, Image as ImageIcon, Trash2, Loader2, Check } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/use-auth-store';
+import { useMediaStore } from '@/store/use-media-store';
 import { deleteDriveFile } from '@/lib/client-drive';
 import { localDB } from '@/lib/indexed-db';
 
 interface MediaCardProps {
   item: DriveMediaItem;
   index: number;
+  allItemIds?: string[];
   onOpenLightbox: (index: number) => void;
 }
 
 export const MediaCard = React.memo(function MediaCard({
   item,
   index,
+  allItemIds,
   onOpenLightbox,
 }: MediaCardProps) {
   const queryClient = useQueryClient();
   const { accessToken } = useAuthStore();
+  const { selectedFileIds, toggleSelect, selectRange } = useMediaStore();
+
+  const isSelected = selectedFileIds.includes(item.id);
+  const isSelectionActive = selectedFileIds.length > 0;
+
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -87,13 +95,63 @@ export const MediaCard = React.memo(function MediaCard({
     };
   }, [isHovered, isVideo]);
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // If Shift key is pressed and item list available: select range
+    if (e.shiftKey && allItemIds) {
+      e.preventDefault();
+      selectRange(index, allItemIds);
+      return;
+    }
+
+    // If Ctrl/Cmd is pressed or multi-select is already active: toggle selection
+    if (e.ctrlKey || e.metaKey || isSelectionActive) {
+      e.preventDefault();
+      toggleSelect(item.id, index);
+      return;
+    }
+
+    // Normal click: open Lightbox HD viewer
+    onOpenLightbox(index);
+  };
+
   return (
     <div
-      className="group relative aspect-square w-full overflow-hidden rounded-xl bg-[#171717] border border-[#262626] transition-all duration-300 hover:border-neutral-500/50 hover:shadow-xl hover:shadow-black/50 select-none cursor-pointer"
+      className={`group relative aspect-square w-full overflow-hidden rounded-xl bg-[#171717] border transition-all duration-200 select-none cursor-pointer ${
+        isSelected
+          ? 'border-blue-500 ring-2 ring-blue-500/50 shadow-xl shadow-blue-500/20 scale-[0.98]'
+          : 'border-[#262626] hover:border-neutral-500/50 hover:shadow-xl hover:shadow-black/50'
+      }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={() => onOpenLightbox(index)}
+      onClick={handleCardClick}
     >
+      {/* Smart Selection Checkbox Button */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (e.shiftKey && allItemIds) {
+            selectRange(index, allItemIds);
+          } else {
+            toggleSelect(item.id, index);
+          }
+        }}
+        title={isSelected ? 'Bỏ chọn' : 'Chọn mục này'}
+        className={`absolute top-2.5 left-2.5 z-30 w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+          isSelected
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-600/50 ring-2 ring-white/50 scale-105'
+            : isSelectionActive
+            ? 'bg-black/70 text-white/40 border border-white/30 hover:border-white hover:text-white'
+            : 'bg-black/60 text-white/40 border border-white/30 opacity-0 group-hover:opacity-100 hover:border-white hover:text-white'
+        }`}
+      >
+        {isSelected ? (
+          <Check className="w-3.5 h-3.5 stroke-[3]" />
+        ) : (
+          <div className="w-1.5 h-1.5 rounded-full bg-white/40 group-hover:bg-white" />
+        )}
+      </button>
+
       {/* Skeleton Loading & Blur Placeholder */}
       {!imageLoaded && !imageError && (
         <div className="absolute inset-0 bg-neutral-900 animate-pulse flex items-center justify-center">

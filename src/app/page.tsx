@@ -9,6 +9,8 @@ import { TimelineScrubber } from '@/components/timeline-scrubber';
 import { LightboxModal } from '@/components/lightbox-modal';
 import { UploaderModal } from '@/components/uploader';
 import { GoogleLoginModal } from '@/components/google-login-modal';
+import { BatchActionsBar } from '@/components/batch-actions-bar';
+import { MoveFolderModal } from '@/components/move-folder-modal';
 import { useMediaStore } from '@/store/use-media-store';
 import { useAuthStore } from '@/store/use-auth-store';
 import { DriveMediaItem } from '@/lib/types';
@@ -116,6 +118,15 @@ export default function HomePage() {
 
       {/* Google OAuth Login & Client ID Setup Modal */}
       <GoogleLoginModal onSuccess={handleFolderChanged} />
+
+      {/* Smart Multi-Select Batch Actions Toolbar */}
+      <BatchActionsBar
+        totalItemsCount={loadedItems.length}
+        allItemIds={loadedItems.map((i) => i.id)}
+      />
+
+      {/* Batch Move Folder Selection Modal */}
+      <MoveFolderModal />
     </div>
   );
 }

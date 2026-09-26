@@ -255,3 +255,115 @@ export async function deleteDriveFile(fileId: string, accessToken: string): Prom
   await localDB.deleteFile(fileId);
 }
 
+/**
+ * Move multiple files from source folder to target folder in Google Drive and IndexedDB
+ */
+export async function moveDriveFiles(
+  fileIds: string[],
+  sourceFolderId: string,
+  targetFolderId: string,
+  accessToken: string
+): Promise<{ success: number; failed: number }> {
+  let success = 0;
+  let failed = 0;
+
+  for (const fileId of fileIds) {
+    try {
+      const url = `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${targetFolderId}&removeParents=${sourceFolderId}&enforceSingleParent=true`;
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (res.ok) {
+        success++;
+        // Update local IndexedDB cache: change driveFolderId
+        try {
+          const cachedFiles = await localDB.getCachedFiles(sourceFolderId);
+          const targetItem = cachedFiles.find((f) => f.id === fileId);
+          if (targetItem) {
+            await localDB.deleteFile(fileId);
+            await localDB.saveFiles([{ ...targetItem, driveFolderId: targetFolderId }]);
+          }
+        } catch {
+          // ignore cache error
+        }
+      } else {
+        failed++;
+        console.error(`Failed to move file ${fileId}:`, await res.text());
+      }
+    } catch (err) {
+      failed++;
+      console.error(`Error moving file ${fileId}:`, err);
+    }
+  }
+
+  return { success, failed };
+}
+
+/**
+ * Batch delete multiple files from Google Drive and local IndexedDB
+ */
+export async function batchDeleteDriveFiles(
+  fileIds: string[],
+  accessToken: string
+): Promise<{ success: number; failed: number }> {
+  let success = 0;
+  let failed = 0;
+
+  for (const fileId of fileIds) {
+    try {
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (res.ok || res.status === 404) {
+        success++;
+        await localDB.deleteFile(fileId);
+      } else {
+        failed++;
+        console.error(`Failed to delete file ${fileId}:`, await res.text());
+      }
+    } catch (err) {
+      failed++;
+      console.error(`Error deleting file ${fileId}:`, err);
+    }
+  }
+
+  return { success, failed };
+}
+
+/**
+ * Recursively fetch all subfolders under root folder to display in folder destination picker
+ */
+export async function fetchAllFoldersUnderRoot(
+  rootFolderId: string,
+  rootFolderName: string,
+  accessToken: string
+): Promise<DriveFolder[]> {
+  const folders: DriveFolder[] = [
+    { id: rootFolderId, name: rootFolderName, parentId: 'root' },
+  ];
+
+  async function crawl(parentId: string) {
+    const subs = await listDriveSubFolders(parentId, accessToken);
+    for (const sub of subs) {
+      folders.push(sub);
+      await crawl(sub.id);
+    }
+  }
+
+  try {
+    await crawl(rootFolderId);
+  } catch (err) {
+    console.warn('[FetchFolders] Crawl error:', err);
+  }
+
+  return folders;
+}
+

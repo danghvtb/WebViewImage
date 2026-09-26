@@ -149,6 +149,8 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     );
   }
 
+  const allItemIds = useMemo(() => filteredItems.map((item) => item.id), [filteredItems]);
+
   return (
     <div
       ref={parentRef}
@@ -187,6 +189,7 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
                       key={item.id}
                       item={item}
                       index={itemIndex}
+                      allItemIds={allItemIds}
                       onOpenLightbox={handleOpenItem}
                     />
                   );
