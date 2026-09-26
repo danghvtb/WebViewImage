@@ -53,11 +53,53 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     }, 1200);
   }, []);
 
-  // Pinch-to-zoom (pinch-in / pinch-out) gesture on touch devices to adjust columns
+  // Pinch-to-zoom gesture on touch devices to adjust columns without browser zoom conflict
   useEffect(() => {
     const element = parentRef.current;
     if (!element) return;
 
+    // 1. iOS Safari WebKit gesture events (completely intercepts native page viewport zoom)
+    const handleGestureStart = (e: any) => {
+      e.preventDefault();
+      pinchTriggeredRef.current = false;
+    };
+
+    const handleGestureChange = (e: any) => {
+      e.preventDefault();
+      if (pinchTriggeredRef.current) return;
+
+      const scale = e.scale;
+      if (scale > 1.2) {
+        // Pinch OUT -> Zoom IN -> Fewer columns (1 or 2)
+        pinchTriggeredRef.current = true;
+        setMobileColumnsCount((prev) => {
+          const next = Math.max(1, prev - 1);
+          showPinchToast(`Phóng to: ${next} cột`);
+          return next;
+        });
+        setTimeout(() => {
+          pinchTriggeredRef.current = false;
+        }, 320);
+      } else if (scale < 0.8) {
+        // Pinch IN -> Zoom OUT -> More columns (3 or 4)
+        pinchTriggeredRef.current = true;
+        setMobileColumnsCount((prev) => {
+          const next = Math.min(4, prev + 1);
+          showPinchToast(`Thu nhỏ: ${next} cột`);
+          return next;
+        });
+        setTimeout(() => {
+          pinchTriggeredRef.current = false;
+        }, 320);
+      }
+    };
+
+    const handleGestureEnd = (e: any) => {
+      e.preventDefault();
+      pinchTriggeredRef.current = false;
+    };
+
+    // 2. Android Chrome & Standard Touch Event Handling
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         const t1 = e.touches[0];
@@ -68,39 +110,41 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && initialDistanceRef.current !== null) {
-        // Prevent default browser viewport zoom when 2 fingers pinch inside gallery
+      if (e.touches.length === 2) {
+        // Prevent default browser viewport zoom
         e.preventDefault();
 
-        const t1 = e.touches[0];
-        const t2 = e.touches[1];
-        const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-        const delta = currentDist - initialDistanceRef.current;
-        const THRESHOLD = 35; // Sensitive and smooth
+        if (initialDistanceRef.current !== null) {
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+          const delta = currentDist - initialDistanceRef.current;
+          const THRESHOLD = 35;
 
-        if (Math.abs(delta) > THRESHOLD && !pinchTriggeredRef.current) {
-          pinchTriggeredRef.current = true;
+          if (Math.abs(delta) > THRESHOLD && !pinchTriggeredRef.current) {
+            pinchTriggeredRef.current = true;
 
-          if (delta > 0) {
-            // Pinch OUT (fingers moving apart) -> Zoom In -> Decrease columns
-            setMobileColumnsCount((prev) => {
-              const next = Math.max(1, prev - 1);
-              showPinchToast(`Phóng to: ${next} cột`);
-              return next;
-            });
-          } else {
-            // Pinch IN (fingers moving together) -> Zoom Out -> Increase columns
-            setMobileColumnsCount((prev) => {
-              const next = Math.min(4, prev + 1);
-              showPinchToast(`Thu nhỏ: ${next} cột`);
-              return next;
-            });
+            if (delta > 0) {
+              // Fingers moving apart -> Zoom IN -> Fewer columns
+              setMobileColumnsCount((prev) => {
+                const next = Math.max(1, prev - 1);
+                showPinchToast(`Phóng to: ${next} cột`);
+                return next;
+              });
+            } else {
+              // Fingers moving together -> Zoom OUT -> More columns
+              setMobileColumnsCount((prev) => {
+                const next = Math.min(4, prev + 1);
+                showPinchToast(`Thu nhỏ: ${next} cột`);
+                return next;
+              });
+            }
+
+            initialDistanceRef.current = currentDist;
+            setTimeout(() => {
+              pinchTriggeredRef.current = false;
+            }, 320);
           }
-
-          initialDistanceRef.current = currentDist;
-          setTimeout(() => {
-            pinchTriggeredRef.current = false;
-          }, 350);
         }
       }
     };
@@ -112,16 +156,37 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
       }
     };
 
+    // Document-level multi-touch interceptor: Prevents Android Chrome viewport zoom
+    const handleDocTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    // iOS Safari gesture listeners
+    element.addEventListener('gesturestart', handleGestureStart as any, { passive: false });
+    element.addEventListener('gesturechange', handleGestureChange as any, { passive: false });
+    element.addEventListener('gestureend', handleGestureEnd as any, { passive: false });
+    document.addEventListener('gesturestart', handleGestureStart as any, { passive: false });
+
+    // Touch events
     element.addEventListener('touchstart', handleTouchStart, { passive: true });
     element.addEventListener('touchmove', handleTouchMove, { passive: false });
     element.addEventListener('touchend', handleTouchEnd, { passive: true });
     element.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    document.addEventListener('touchmove', handleDocTouchMove, { passive: false });
 
     return () => {
+      element.removeEventListener('gesturestart', handleGestureStart as any);
+      element.removeEventListener('gesturechange', handleGestureChange as any);
+      element.removeEventListener('gestureend', handleGestureEnd as any);
+      document.removeEventListener('gesturestart', handleGestureStart as any);
+
       element.removeEventListener('touchstart', handleTouchStart);
       element.removeEventListener('touchmove', handleTouchMove);
       element.removeEventListener('touchend', handleTouchEnd);
       element.removeEventListener('touchcancel', handleTouchEnd);
+      document.removeEventListener('touchmove', handleDocTouchMove);
     };
   }, [setMobileColumnsCount, showPinchToast]);
 
@@ -274,6 +339,7 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
   return (
     <div
       ref={parentRef}
+      style={{ touchAction: 'pan-y' }}
       className="flex-1 h-full overflow-y-auto px-2.5 sm:px-6 py-3 sm:py-6 custom-scrollbar"
     >
       <div
