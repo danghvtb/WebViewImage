@@ -137,18 +137,18 @@ export const MediaCard = React.memo(function MediaCard({
           }
         }}
         title={isSelected ? 'Bỏ chọn' : 'Chọn mục này'}
-        className={`absolute top-2.5 left-2.5 z-30 w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+        className={`absolute top-2 left-2 z-30 w-7 h-7 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center transition-all ${
           isSelected
             ? 'bg-blue-600 text-white shadow-md shadow-blue-600/50 ring-2 ring-white/50 scale-105'
             : isSelectionActive
-            ? 'bg-black/70 text-white/40 border border-white/30 hover:border-white hover:text-white'
-            : 'bg-black/60 text-white/40 border border-white/30 opacity-0 group-hover:opacity-100 hover:border-white hover:text-white'
+            ? 'bg-black/80 text-white border border-white/50 shadow-md'
+            : 'bg-black/50 text-white/70 border border-white/30 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 hover:border-white hover:text-white'
         }`}
       >
         {isSelected ? (
-          <Check className="w-3.5 h-3.5 stroke-[3]" />
+          <Check className="w-4 h-4 sm:w-3.5 sm:h-3.5 stroke-[3]" />
         ) : (
-          <div className="w-1.5 h-1.5 rounded-full bg-white/40 group-hover:bg-white" />
+          <div className="w-2 h-2 sm:w-1.5 sm:h-1.5 rounded-full bg-white/60 group-hover:bg-white" />
         )}
       </button>
 

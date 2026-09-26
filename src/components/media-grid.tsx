@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMediaStore } from '@/store/use-media-store';
@@ -19,8 +19,32 @@ interface MediaGridProps {
 export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  const { columnsCount, filter, searchQuery, setUploadModalOpen } = useMediaStore();
+  const { columnsCount, columnDensity, filter, searchQuery, setUploadModalOpen } = useMediaStore();
   const { isLoggedIn, accessToken, currentFolder, login, setIsConfigModalOpen } = useAuthStore();
+
+  const [windowWidth, setWindowWidth] = useState<number>(1200);
+
+  useEffect(() => {
+    setWindowWidth(window.innerWidth);
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Responsive column count (mobile: 2 columns, tablet: 3, desktop: 4+)
+  const activeColumns = useMemo(() => {
+    if (windowWidth < 640) {
+      if (columnDensity === 'large') return 1;
+      if (columnDensity === 'compact') return 3;
+      return 2;
+    }
+    if (windowWidth < 1024) {
+      if (columnDensity === 'large') return 2;
+      if (columnDensity === 'compact') return 4;
+      return 3;
+    }
+    return columnsCount;
+  }, [windowWidth, columnDensity, columnsCount]);
 
   // Query media items using Cache-First strategy:
   // 1. Read from IndexedDB immediately (instant 60fps)
@@ -74,18 +98,21 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     }
   }, [filteredItems, onItemsLoaded]);
 
-  // Group items into rows according to current column count
-  const rowCount = Math.ceil(filteredItems.length / columnsCount);
+  // Group items into rows according to current responsive column count
+  const rowCount = Math.ceil(filteredItems.length / activeColumns);
 
   // TanStack Virtualizer for 60fps virtualization
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
     estimateSize: () => {
-      if (!parentRef.current) return 260;
-      const width = parentRef.current.clientWidth - 48;
-      const itemWidth = width / columnsCount;
-      return itemWidth + 16;
+      if (!parentRef.current) return 220;
+      const isMobile = windowWidth < 640;
+      const padding = isMobile ? 20 : 48;
+      const gap = isMobile ? 10 : 16;
+      const width = parentRef.current.clientWidth - padding;
+      const itemWidth = width / activeColumns;
+      return itemWidth + gap;
     },
     overscan: 4,
   });
@@ -155,7 +182,7 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
   return (
     <div
       ref={parentRef}
-      className="flex-1 h-full overflow-y-auto px-4 sm:px-6 py-6 custom-scrollbar"
+      className="flex-1 h-full overflow-y-auto px-2.5 sm:px-6 py-3 sm:py-6 custom-scrollbar"
     >
       <div
         className="w-full relative"
@@ -164,23 +191,23 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
         }}
       >
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-          const startIndex = virtualRow.index * columnsCount;
-          const rowItems = filteredItems.slice(startIndex, startIndex + columnsCount);
+          const startIndex = virtualRow.index * activeColumns;
+          const rowItems = filteredItems.slice(startIndex, startIndex + activeColumns);
 
           return (
             <div
               key={virtualRow.key}
               data-index={virtualRow.index}
               ref={rowVirtualizer.measureElement}
-              className="absolute top-0 left-0 w-full pb-4"
+              className="absolute top-0 left-0 w-full pb-2.5 sm:pb-4"
               style={{
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >
               <div
-                className="grid gap-4 w-full"
+                className="grid gap-2.5 sm:gap-4 w-full"
                 style={{
-                  gridTemplateColumns: `repeat(${columnsCount}, minmax(0, 1fr))`,
+                  gridTemplateColumns: `repeat(${activeColumns}, minmax(0, 1fr))`,
                 }}
               >
                 {rowItems.map((item, colIndex) => {

@@ -67,10 +67,10 @@ export function BatchActionsBar({ totalItemsCount, allItemIds }: BatchActionsBar
   };
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-5 duration-300">
-      <div className="flex items-center gap-2 sm:gap-3 px-4 py-2.5 rounded-2xl bg-[#141414]/95 border border-[#333] backdrop-blur-2xl shadow-2xl text-white">
+    <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[94%] sm:w-auto max-w-lg animate-in slide-in-from-bottom-5 duration-300">
+      <div className="flex items-center justify-between sm:justify-start gap-1.5 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-[#141414]/95 border border-[#333] backdrop-blur-2xl shadow-2xl text-white">
         {/* Count Badge */}
-        <div className="flex items-center gap-2 pr-2 border-r border-neutral-700/60">
+        <div className="flex items-center gap-1.5 sm:gap-2 pr-1.5 sm:pr-2 border-r border-neutral-700/60 shrink-0">
           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-xs font-bold text-white shadow-md">
             {selectedCount}
           </span>
@@ -82,11 +82,11 @@ export function BatchActionsBar({ totalItemsCount, allItemIds }: BatchActionsBar
         {/* Select All Toggle */}
         <button
           onClick={handleToggleSelectAll}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors shrink-0"
         >
           <CheckSquare className="w-3.5 h-3.5 text-blue-400" />
-          <span className="hidden md:inline">
-            {isAllSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+          <span className="hidden sm:inline">
+            {isAllSelected ? 'Bỏ chọn' : 'Tất cả'}
           </span>
         </button>
 
@@ -94,7 +94,7 @@ export function BatchActionsBar({ totalItemsCount, allItemIds }: BatchActionsBar
         <button
           onClick={() => setIsMoveModalOpen(true)}
           disabled={isDeleting}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white text-xs font-semibold border border-neutral-700 transition-all active:scale-95"
+          className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white text-xs font-semibold border border-neutral-700 transition-all active:scale-95 shrink-0"
         >
           <FolderInput className="w-3.5 h-3.5 text-amber-400" />
           <span>Di chuyển</span>
@@ -104,7 +104,7 @@ export function BatchActionsBar({ totalItemsCount, allItemIds }: BatchActionsBar
         <button
           onClick={handleBatchDelete}
           disabled={isDeleting}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 text-red-300 hover:text-red-200 text-xs font-semibold border border-red-800/40 transition-all active:scale-95 disabled:opacity-50"
+          className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 text-red-300 hover:text-red-200 text-xs font-semibold border border-red-800/40 transition-all active:scale-95 disabled:opacity-50 shrink-0"
         >
           {isDeleting ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -118,7 +118,7 @@ export function BatchActionsBar({ totalItemsCount, allItemIds }: BatchActionsBar
         <button
           onClick={clearSelection}
           title="Bỏ chọn (Esc)"
-          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors ml-1"
+          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors ml-0.5 shrink-0"
         >
           <X className="w-4 h-4" />
         </button>
