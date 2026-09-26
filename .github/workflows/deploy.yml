@@ -49,6 +49,7 @@ jobs:
       - name: Build with Next.js
         env:
           NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: "712903856977-dvhaqpv7ut13fvvp2srh0qfi4ej2nl8j.apps.googleusercontent.com"
         run: npm run build
 
       - name: Upload artifact

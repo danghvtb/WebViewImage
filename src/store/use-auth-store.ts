@@ -6,8 +6,10 @@ import {
   getSavedClientId,
   saveClientId,
   logoutGoogle,
+  requestGoogleAccessToken,
 } from '@/lib/google-auth';
 import { DriveFolder } from '@/lib/indexed-db';
+import { getOrCreateAppRootFolder, listDriveSubFolders } from '@/lib/client-drive';
 
 interface AuthState {
   accessToken: string | null;
@@ -22,6 +24,7 @@ interface AuthState {
   isLoadingFolder: boolean;
   isConfigModalOpen: boolean;
 
+  login: () => Promise<void>;
   setAuth: (accessToken: string, user: GoogleUserProfile) => void;
   setClientId: (clientId: string) => void;
   logout: () => void;
@@ -53,6 +56,37 @@ export const useAuthStore = create<AuthState>((set, get) => {
     subFolders: [],
     isLoadingFolder: false,
     isConfigModalOpen: false,
+
+    login: async () => {
+      const { clientId, setAuth, setRootFolder, setSubFolders, setIsConfigModalOpen } = get();
+      const finalId = clientId || getSavedClientId();
+
+      if (!finalId) {
+        setIsConfigModalOpen(true);
+        return;
+      }
+
+      try {
+        set({ isLoadingFolder: true });
+        const { accessToken, profile } = await requestGoogleAccessToken(finalId);
+        setAuth(accessToken, profile);
+
+        const rootFolder = await getOrCreateAppRootFolder(accessToken);
+        setRootFolder(rootFolder);
+
+        const subs = await listDriveSubFolders(rootFolder.id, accessToken);
+        setSubFolders(subs);
+      } catch (err: any) {
+        console.error('[AuthStore] Login failed:', err);
+        if (err.message === 'MISSING_CLIENT_ID') {
+          setIsConfigModalOpen(true);
+        } else {
+          alert(`Đăng nhập Google thất bại: ${err.message}`);
+        }
+      } finally {
+        set({ isLoadingFolder: false });
+      }
+    },
 
     setAuth: (accessToken, user) =>
       set({

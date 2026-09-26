@@ -53,15 +53,18 @@ export function loadGoogleGisScript(): Promise<void> {
   });
 }
 
+export const DEFAULT_CLIENT_ID =
+  '712903856977-dvhaqpv7ut13fvvp2srh0qfi4ej2nl8j.apps.googleusercontent.com';
+
 /**
  * Get configured Google OAuth Client ID
  */
 export function getSavedClientId(): string {
-  if (typeof window === 'undefined') return '';
+  if (typeof window === 'undefined') return DEFAULT_CLIENT_ID;
   return (
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
     localStorage.getItem(STORAGE_CLIENT_ID) ||
-    ''
+    DEFAULT_CLIENT_ID
   );
 }
 

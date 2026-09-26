@@ -20,7 +20,7 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   const { columnsCount, filter, searchQuery, setUploadModalOpen } = useMediaStore();
-  const { isLoggedIn, accessToken, currentFolder, setIsConfigModalOpen } = useAuthStore();
+  const { isLoggedIn, accessToken, currentFolder, login, setIsConfigModalOpen } = useAuthStore();
 
   // Query media items using Cache-First strategy:
   // 1. Read from IndexedDB immediately (instant 60fps)
@@ -115,7 +115,7 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
           Đăng nhập bằng tài khoản Google để tự động tạo một thư mục riêng <b>DriveStream Media</b>. Bạn có thể tự do tạo nhiều thư mục con, xem ảnh 60fps và tải video dung lượng lớn không giới hạn.
         </p>
         <button
-          onClick={() => setIsConfigModalOpen(true)}
+          onClick={login}
           className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-600/25 active:scale-95"
         >
           <LogIn className="w-4 h-4" />

@@ -40,6 +40,7 @@ export function HeaderBar() {
     user,
     accessToken,
     currentFolder,
+    login,
     logout,
     setIsConfigModalOpen,
     setSubFolders,
@@ -245,11 +246,11 @@ export function HeaderBar() {
           </div>
         ) : (
           <button
-            onClick={() => setIsConfigModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-medium border border-neutral-700 transition-colors active:scale-95"
+            onClick={login}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-600/20 transition-all active:scale-95"
           >
-            <LogIn className="w-3.5 h-3.5 text-blue-400" />
-            <span>Đăng nhập</span>
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Đăng nhập Google</span>
           </button>
         )}
       </div>
