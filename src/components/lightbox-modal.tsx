@@ -25,9 +25,10 @@ import {
   ExternalLink,
   Loader2,
   Film,
-  Sparkles,
+  Zap,
   AlertCircle,
   RefreshCw,
+  Tv,
 } from 'lucide-react';
 
 interface LightboxModalProps {
@@ -54,8 +55,8 @@ interface VideoSlideData {
 }
 
 /**
- * Custom cinema video player slide supporting both Google Drive Preview stream
- * and client-side buffered HTML5 video playback with token authentication.
+ * High-performance cinema video player slide supporting progressive HTTP 206 streaming
+ * (starts playing immediately, buffering data as you watch) and Google Drive Preview fallback.
  */
 function DriveVideoSlide({
   slide,
@@ -64,111 +65,26 @@ function DriveVideoSlide({
   slide: VideoSlideData;
   accessToken: string | null;
 }) {
-  const [mode, setMode] = useState<'drive' | 'html5'>('drive');
+  const [mode, setMode] = useState<'stream' | 'drive'>('stream');
+  const [isStreamingLoading, setIsStreamingLoading] = useState(true);
   const [isIframeLoading, setIsIframeLoading] = useState(true);
-  const [isHtml5Loading, setIsHtml5Loading] = useState(false);
-  const [bufferProgress, setBufferProgress] = useState(0);
-  const [bufferedBytes, setBufferedBytes] = useState(0);
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [html5Error, setHtml5Error] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
 
-  // Silently ensure file has reader permission for anyone with link
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+  const progressiveStreamUrl = useMemo(() => {
+    return `${basePath}/api-stream/${slide.fileId}?token=${encodeURIComponent(
+      accessToken || ''
+    )}&mime=${encodeURIComponent(slide.mimeType || 'video/mp4')}`;
+  }, [basePath, slide.fileId, accessToken, slide.mimeType]);
+
+  // Ensure file has public reader permissions silently in the background
   useEffect(() => {
     if (accessToken && slide.fileId) {
       makeFolderOrFilePublic(slide.fileId, accessToken).catch(() => {});
     }
   }, [slide.fileId, accessToken]);
-
-  // Clean up buffered blob URL on unmount
-  useEffect(() => {
-    return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, [blobUrl]);
-
-  // Start buffering video for HTML5 native playback
-  const handleStartHtml5 = async () => {
-    setMode('html5');
-    if (blobUrl) return; // Already cached in memory
-
-    try {
-      setIsHtml5Loading(true);
-      setHtml5Error(null);
-      setBufferProgress(0);
-      setBufferedBytes(0);
-
-      abortControllerRef.current = new AbortController();
-
-      const headers: HeadersInit = {};
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${slide.fileId}?alt=media`,
-        {
-          headers,
-          signal: abortControllerRef.current.signal,
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Google API trả về mã lỗi: ${response.status}`);
-      }
-
-      const contentLength = response.headers.get('content-length');
-      const total = contentLength ? parseInt(contentLength, 10) : slide.size || 0;
-
-      if (!response.body) {
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        setBlobUrl(url);
-        setIsHtml5Loading(false);
-        return;
-      }
-
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let receivedBytes = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        chunks.push(value);
-        receivedBytes += value.length;
-        setBufferedBytes(receivedBytes);
-        if (total > 0) {
-          setBufferProgress(Math.min(100, Math.round((receivedBytes / total) * 100)));
-        }
-      }
-
-      const blob = new Blob(chunks as any[], { type: slide.mimeType || 'video/mp4' });
-      const url = URL.createObjectURL(blob);
-      setBlobUrl(url);
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        console.error('[HTML5Player] Buffer error:', err);
-        setHtml5Error(err.message || 'Không thể tải video vào bộ nhớ đệm');
-      }
-    } finally {
-      setIsHtml5Loading(false);
-    }
-  };
-
-  const handleCancelBuffer = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    setIsHtml5Loading(false);
-    setMode('drive');
-  };
 
   const handleDownload = () => {
     downloadDriveFile(slide.fileId, slide.name, accessToken);
@@ -176,6 +92,12 @@ function DriveVideoSlide({
 
   const handleOpenGoogleDrive = () => {
     window.open(`https://drive.google.com/file/d/${slide.fileId}/view`, '_blank');
+  };
+
+  const handleStreamError = () => {
+    console.warn('[VideoPlayer] Progressive stream error, falling back to Google Drive embed player');
+    setStreamError('Không thể nạp luồng phát trực tiếp, tự động chuyển sang Google Drive Player.');
+    setMode('drive');
   };
 
   return (
@@ -199,29 +121,32 @@ function DriveVideoSlide({
 
         <div className="flex items-center gap-1.5 ml-auto">
           {/* Mode Switcher */}
-          {mode === 'drive' ? (
+          {mode === 'stream' ? (
             <button
               type="button"
-              onClick={handleStartHtml5}
-              title="Chuyển sang trình phát HTML5 tải trực tiếp vào bộ đệm"
+              onClick={() => setMode('drive')}
+              title="Chuyển sang trình phát nhúng Google Drive"
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-200 transition-colors text-[11px]"
             >
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              <span>Phát HTML5</span>
+              <Tv className="w-3.5 h-3.5 text-neutral-300" />
+              <span>Google Player</span>
             </button>
           ) : (
             <button
               type="button"
-              onClick={() => setMode('drive')}
-              title="Quay lại trình phát Google Drive"
+              onClick={() => {
+                setStreamError(null);
+                setMode('stream');
+              }}
+              title="Chuyển sang trình phát trực tiếp tải đến đâu xem đến đấy"
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white transition-colors text-[11px]"
             >
-              <Film className="w-3 h-3" />
-              <span>Phát Drive</span>
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>Phát trực tiếp</span>
             </button>
           )}
 
-          {/* Open in Drive tab */}
+          {/* Open in Google Drive tab */}
           <button
             type="button"
             onClick={handleOpenGoogleDrive}
@@ -243,13 +168,40 @@ function DriveVideoSlide({
         </div>
       </div>
 
-      {/* Main Player Display Area */}
+      {/* Main Video Viewport Area */}
       <div className="relative w-full aspect-video max-h-[72vh] sm:max-h-[76vh] flex items-center justify-center rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl">
-        {mode === 'drive' ? (
+        {mode === 'stream' ? (
+          /* Progressive Stream Player (Loads and plays immediately, buffering chunks as you watch) */
           <>
-            {/* Loading Indicator for Iframe */}
+            {isStreamingLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-10 pointer-events-none space-y-2">
+                <Loader2 className="w-9 h-9 text-blue-500 animate-spin" />
+                <span className="text-xs text-neutral-300 font-medium">Đang phát trực tiếp video...</span>
+                <span className="text-[11px] text-neutral-500">Tải đến đâu xem luôn đến đấy</span>
+              </div>
+            )}
+
+            <video
+              ref={videoRef}
+              src={progressiveStreamUrl}
+              poster={slide.poster}
+              controls
+              autoPlay
+              playsInline
+              preload="auto"
+              onLoadStart={() => setIsStreamingLoading(true)}
+              onLoadedData={() => setIsStreamingLoading(false)}
+              onCanPlay={() => setIsStreamingLoading(false)}
+              onPlaying={() => setIsStreamingLoading(false)}
+              onError={handleStreamError}
+              className="w-full h-full object-contain bg-black"
+            />
+          </>
+        ) : (
+          /* Google Drive Iframe Player Fallback */
+          <>
             {isIframeLoading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-10 space-y-3">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-10 space-y-2">
                 <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
                 <span className="text-xs text-neutral-400">Đang khởi chạy trình phát Google Drive...</span>
               </div>
@@ -264,85 +216,29 @@ function DriveVideoSlide({
               onLoad={() => setIsIframeLoading(false)}
             />
           </>
-        ) : (
-          /* HTML5 Mode */
-          <div className="w-full h-full flex flex-col items-center justify-center p-4">
-            {isHtml5Loading ? (
-              <div className="flex flex-col items-center justify-center p-6 bg-neutral-900/95 rounded-2xl border border-white/10 max-w-sm w-full text-center space-y-3 shadow-xl">
-                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                <div>
-                  <h4 className="text-sm font-semibold text-white">Đang tải video vào bộ nhớ đệm</h4>
-                  <p className="text-xs text-neutral-400 mt-0.5 truncate max-w-[260px]">{slide.name}</p>
-                </div>
-                {/* Progress bar */}
-                <div className="w-full bg-neutral-800 rounded-full h-2 overflow-hidden border border-white/5">
-                  <div
-                    className="bg-blue-600 h-full rounded-full transition-all duration-200"
-                    style={{ width: `${bufferProgress}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between w-full text-[11px] text-neutral-400 font-mono">
-                  <span>{bufferProgress}%</span>
-                  <span>
-                    {formatBytes(bufferedBytes)} / {formatBytes(slide.size)}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCancelBuffer}
-                  className="text-xs text-neutral-400 hover:text-white underline pt-1"
-                >
-                  Hủy & quay lại Google Player
-                </button>
-              </div>
-            ) : html5Error ? (
-              <div className="flex flex-col items-center justify-center p-6 bg-neutral-900/95 rounded-2xl border border-red-500/20 max-w-sm w-full text-center space-y-3">
-                <AlertCircle className="w-8 h-8 text-red-400" />
-                <div>
-                  <h4 className="text-sm font-semibold text-white">Tải video không thành công</h4>
-                  <p className="text-xs text-red-300 mt-1">{html5Error}</p>
-                </div>
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleStartHtml5}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Thử lại</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMode('drive')}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-300 text-xs"
-                  >
-                    Google Player
-                  </button>
-                </div>
-              </div>
-            ) : blobUrl ? (
-              <video
-                src={blobUrl}
-                controls
-                autoPlay
-                playsInline
-                className="w-full h-full object-contain rounded-xl"
-              />
-            ) : null}
-          </div>
         )}
       </div>
 
-      {/* Mobile Friendly Helper Note */}
-      <div className="mt-2 text-[11px] text-neutral-400 text-center flex items-center justify-center gap-2">
-        <span>Gặp sự cố phát?</span>
+      {/* Helper Footer Status */}
+      <div className="mt-2 text-[11px] text-neutral-400 text-center flex flex-wrap items-center justify-center gap-2">
+        {mode === 'stream' ? (
+          <span className="inline-flex items-center gap-1 text-emerald-400">
+            <Zap className="w-3 h-3 text-amber-400" />
+            <span>Phát luồng trực tiếp (Xem ngay không cần chờ tải hết)</span>
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-neutral-300">
+            <Tv className="w-3 h-3 text-blue-400" />
+            <span>Trình phát Google Drive</span>
+          </span>
+        )}
+        <span>•</span>
         <button
           type="button"
-          onClick={handleStartHtml5}
-          className="text-blue-400 hover:underline inline-flex items-center gap-0.5"
+          onClick={() => setMode(mode === 'stream' ? 'drive' : 'stream')}
+          className="text-blue-400 hover:underline"
         >
-          <Sparkles className="w-3 h-3 inline" />
-          <span>Thử phát HTML5</span>
+          {mode === 'stream' ? 'Đổi sang Google Player' : 'Đổi sang Phát trực tiếp'}
         </button>
         <span>•</span>
         <button
@@ -457,7 +353,7 @@ export function LightboxModal({
           if ((slide as any).type === 'drive-video') {
             const videoSlide = slide as unknown as VideoSlideData;
             if (offset !== 0) {
-              // Preload preview poster for adjacent slides without firing multiple iframes
+              // Preload preview poster for adjacent slides without firing multiple network streams
               return (
                 <div className="relative w-full h-full flex items-center justify-center p-4">
                   <img
