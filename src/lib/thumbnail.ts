@@ -46,17 +46,24 @@ export function getLightboxPreviewUrl(
 }
 
 /**
- * Returns streaming URL for video
+ * Returns Google Drive preview embed URL for video streaming in iframe
  */
 export function getVideoStreamingUrl(fileId: string): string {
-  return `/api/stream/${fileId}`;
+  return `https://drive.google.com/file/d/${fileId}/preview`;
 }
 
 /**
- * Returns direct download URL for original file
+ * Returns direct download URL for original file from Google Drive
  */
 export function getOriginalDownloadUrl(fileId: string): string {
-  return `/api/download/${fileId}`;
+  return `https://drive.google.com/uc?export=download&id=${fileId}`;
+}
+
+/**
+ * Returns Google Drive web view URL
+ */
+export function getGoogleDriveViewUrl(fileId: string): string {
+  return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
 /**

@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { DriveMediaItem } from '@/lib/types';
 import {
   getGridThumbnailUrl,
-  getVideoStreamingUrl,
   getOriginalDownloadUrl,
   formatBytes,
   formatDuration,
@@ -13,7 +12,7 @@ import { Play, Download, Eye, Film, Image as ImageIcon, Trash2, Loader2, Check }
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/use-auth-store';
 import { useMediaStore } from '@/store/use-media-store';
-import { deleteDriveFile } from '@/lib/client-drive';
+import { deleteDriveFile, downloadDriveFile } from '@/lib/client-drive';
 import { localDB } from '@/lib/indexed-db';
 
 interface MediaCardProps {
@@ -40,11 +39,14 @@ export const MediaCard = React.memo(function MediaCard({
   const [isHovered, setIsHovered] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const isVideo = item.mimeType.startsWith('video/');
   const thumbnailUrl = getGridThumbnailUrl(item.thumbnailUrl, item.id, 500, 500);
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    downloadDriveFile(item.id, item.name, accessToken);
+  };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -66,34 +68,6 @@ export const MediaCard = React.memo(function MediaCard({
       setIsDeleting(false);
     }
   };
-
-  // Handle video hover preview with small debounce to prevent unnecessary stream requests
-  useEffect(() => {
-    if (!isVideo) return;
-
-    if (isHovered) {
-      hoverTimeoutRef.current = setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.currentTime = 0;
-          videoRef.current.play().catch(() => {
-            // Autoplay policy or abort
-          });
-        }
-      }, 250);
-    } else {
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current);
-      }
-      if (videoRef.current) {
-        videoRef.current.pause();
-        videoRef.current.currentTime = 0;
-      }
-    }
-
-    return () => {
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    };
-  }, [isHovered, isVideo]);
 
   const handleCardClick = (e: React.MouseEvent) => {
     // If Shift key is pressed and item list available: select range
@@ -188,19 +162,13 @@ export const MediaCard = React.memo(function MediaCard({
         </div>
       )}
 
-      {/* Video Hover Preview (HTTP 206 stream muted) */}
+      {/* Video Center Play Indicator */}
       {isVideo && (
-        <video
-          ref={videoRef}
-          src={getVideoStreamingUrl(item.id)}
-          muted
-          playsInline
-          loop
-          preload="none"
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 pointer-events-none ${
-            isHovered ? 'opacity-100 z-10' : 'opacity-0 -z-10'
-          }`}
-        />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 z-10">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-blue-600/90 backdrop-blur-md flex items-center justify-center shadow-xl shadow-blue-600/40 text-white transform group-hover:scale-110 transition-transform border border-white/20">
+            <Play className="w-5 h-5 fill-white ml-0.5" />
+          </div>
+        </div>
       )}
 
       {/* Gradient Vignette Overlay on Hover */}
@@ -212,15 +180,14 @@ export const MediaCard = React.memo(function MediaCard({
           </span>
 
           <div className="flex items-center gap-1.5">
-            <a
-              href={getOriginalDownloadUrl(item.id)}
-              download={item.name}
-              onClick={(e) => e.stopPropagation()}
-              title="Tải file gốc"
+            <button
+              type="button"
+              onClick={handleDownload}
+              title="Tải file về máy"
               className="p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white/90 hover:text-white hover:bg-black/90 transition-colors border border-white/10"
             >
               <Download className="w-3.5 h-3.5" />
-            </a>
+            </button>
 
             <button
               onClick={handleDelete}

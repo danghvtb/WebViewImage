@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useMediaStore } from '@/store/use-media-store';
 import { useAuthStore } from '@/store/use-auth-store';
 import { formatBytes } from '@/lib/thumbnail';
-import { initClientResumableUpload } from '@/lib/client-drive';
+import { initClientResumableUpload, makeFolderOrFilePublic } from '@/lib/client-drive';
 import { localDB } from '@/lib/indexed-db';
 import { DriveMediaItem } from '@/lib/types';
 import {
@@ -249,6 +249,9 @@ export function UploaderModal() {
           };
 
           await localDB.saveFiles([newMediaItem]);
+          if (accessToken) {
+            makeFolderOrFilePublic(fileId, accessToken).catch(() => {});
+          }
           queryClient.invalidateQueries({ queryKey: ['files'] });
           return true;
         } else {
@@ -259,7 +262,7 @@ export function UploaderModal() {
 
       return true;
     },
-    [currentFolder, queryClient]
+    [currentFolder, queryClient, accessToken]
   );
 
   // Process queue sequentially

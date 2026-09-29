@@ -367,3 +367,80 @@ export async function fetchAllFoldersUnderRoot(
   return folders;
 }
 
+/**
+ * Ensures a file or folder has reader permission for anyone with link,
+ * enabling seamless Google Drive preview iframe streaming without cookie blocks.
+ */
+export async function makeFolderOrFilePublic(
+  fileId: string,
+  accessToken: string
+): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          role: 'reader',
+          type: 'anyone',
+        }),
+      }
+    );
+    return res.ok;
+  } catch (err) {
+    console.warn('[Permissions] Failed to set public reader permission:', err);
+    return false;
+  }
+}
+
+/**
+ * Downloads a file directly via authenticated Google Drive API (alt=media)
+ * or falls back to Google Drive direct download URL.
+ */
+export async function downloadDriveFile(
+  fileId: string,
+  fileName: string,
+  accessToken?: string | null
+): Promise<void> {
+  if (accessToken) {
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 15000);
+        return;
+      }
+    } catch (err) {
+      console.warn('[Download] Direct API download failed, falling back to export link:', err);
+    }
+  }
+
+  // Fallback direct download link
+  const link = document.createElement('a');
+  link.href = `https://drive.google.com/uc?export=download&id=${fileId}`;
+  link.target = '_blank';
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
