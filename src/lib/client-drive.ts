@@ -196,7 +196,251 @@ export async function listDriveFolderMedia(
 }
 
 /**
- * Initiate Resumable Upload Session directly from browser with Google Drive API
+ * Upload small to medium files (<= 15MB) using Google Drive Multipart Upload
+ * Single atomic request with XMLHttpRequest for accurate progress and zero CORS location issues.
+ */
+export function uploadDriveFileMultipart(
+  file: File,
+  folderId: string,
+  accessToken: string,
+  onProgress?: (progress: number, loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      return reject(new Error('Tải lên đã bị hủy'));
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open(
+      'POST',
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,size,thumbnailLink,createdTime,modifiedTime,imageMediaMetadata,videoMediaMetadata'
+    );
+    xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+
+    const boundary = '-------DriveStream' + Math.random().toString(36).substring(2);
+    xhr.setRequestHeader('Content-Type', `multipart/related; boundary=${boundary}`);
+
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) {
+          const percent = Math.min(100, Math.round((e.loaded / e.total) * 100));
+          onProgress(percent, e.loaded, e.total);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data);
+        } catch {
+          resolve({ id: `file-${Date.now()}` });
+        }
+      } else {
+        let errMsg = `Google Drive trả về mã lỗi: ${xhr.status}`;
+        try {
+          const errData = JSON.parse(xhr.responseText);
+          if (errData?.error?.message) errMsg = errData.error.message;
+        } catch {}
+        reject(new Error(errMsg));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Lỗi kết nối tải lên (Failed to fetch). Vui lòng thử lại.'));
+    };
+
+    xhr.ontimeout = () => {
+      reject(new Error('Quá thời gian kết nối mạng (Timeout). Vui lòng thử lại.'));
+    };
+
+    if (signal) {
+      signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    }
+
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelim = `\r\n--${boundary}--`;
+
+    const metadataPart = new Blob(
+      [
+        delimiter,
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+        JSON.stringify({
+          name: file.name,
+          parents: [folderId],
+        }),
+        delimiter,
+        `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`,
+      ],
+      { type: 'text/plain' }
+    );
+
+    const closePart = new Blob([closeDelim], { type: 'text/plain' });
+    const fullBody = new Blob([metadataPart, file, closePart]);
+
+    xhr.send(fullBody);
+  });
+}
+
+/**
+ * Upload large files (> 15MB) using Google Drive Resumable Upload with XHR chunking
+ */
+export async function uploadDriveFileResumable(
+  file: File,
+  folderId: string,
+  accessToken: string,
+  onProgress?: (progress: number, speedMBs: number, etaSeconds: number | null) => void,
+  signal?: AbortSignal
+): Promise<any> {
+  // Step 1: Initiate session via XHR
+  const sessionUrl = await new Promise<string>((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('Tải lên đã bị hủy'));
+
+    const xhr = new XMLHttpRequest();
+    xhr.open(
+      'POST',
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable'
+    );
+    xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    xhr.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+    xhr.setRequestHeader('X-Upload-Content-Type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('X-Upload-Content-Length', String(file.size));
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const location = xhr.getResponseHeader('Location');
+        if (location) {
+          resolve(location);
+        } else {
+          reject(new Error('Google Drive không trả về Location header cho phiên tải lên'));
+        }
+      } else {
+        reject(new Error(`Khởi tạo tải lên thất bại (${xhr.status}): ${xhr.responseText}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Lỗi kết nối khi khởi tạo tải lên (Failed to fetch)'));
+    if (signal) signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(JSON.stringify({ name: file.name, parents: [folderId] }));
+  });
+
+  // Step 2: Upload chunks
+  const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunk
+  let currentStart = 0;
+  const totalSize = file.size;
+
+  while (currentStart < totalSize) {
+    if (signal?.aborted) {
+      throw new Error('Đã tạm dừng hoặc hủy tải lên');
+    }
+
+    const currentEnd = Math.min(currentStart + CHUNK_SIZE, totalSize);
+    const chunkBlob = file.slice(currentStart, currentEnd);
+    const chunkStartTime = performance.now();
+
+    const result = await new Promise<{ status: number; range?: string; data?: any }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', sessionUrl);
+      xhr.setRequestHeader('Content-Range', `bytes ${currentStart}-${currentEnd - 1}/${totalSize}`);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          const overallLoaded = currentStart + e.loaded;
+          const overallPercent = Math.min(100, Math.round((overallLoaded / totalSize) * 100));
+          const durationSec = (performance.now() - chunkStartTime) / 1000;
+          const speed = durationSec > 0 ? parseFloat((e.loaded / (1024 * 1024) / durationSec).toFixed(2)) : 0;
+          const remainingBytes = totalSize - overallLoaded;
+          const eta = speed > 0 ? Math.round(remainingBytes / (speed * 1024 * 1024)) : null;
+          onProgress(overallPercent, speed, eta);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 308) {
+          const range = xhr.getResponseHeader('Range');
+          resolve({ status: 308, range: range || undefined });
+        } else if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve({ status: xhr.status, data: JSON.parse(xhr.responseText) });
+          } catch {
+            resolve({ status: xhr.status, data: {} });
+          }
+        } else {
+          reject(new Error(`Tải đoạn dữ liệu thất bại (${xhr.status}): ${xhr.responseText}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Lỗi kết nối khi tải dữ liệu lên Google Drive'));
+      if (signal) signal.addEventListener('abort', () => xhr.abort(), { once: true });
+      xhr.send(chunkBlob);
+    });
+
+    if (result.status === 308) {
+      if (result.range) {
+        const match = result.range.match(/bytes=0-(\d+)/);
+        currentStart = match ? parseInt(match[1], 10) + 1 : currentEnd;
+      } else {
+        currentStart = currentEnd;
+      }
+    } else {
+      return result.data;
+    }
+  }
+}
+
+/**
+ * Intelligent file uploader that chooses the optimal strategy (Multipart for <= 15MB, Resumable for > 15MB),
+ * with automatic token refresh on authentication errors.
+ */
+export async function uploadDriveFileAuto(
+  file: File,
+  folderId: string,
+  accessToken: string,
+  onProgress?: (progress: number, speedMBs: number, etaSeconds: number | null) => void,
+  signal?: AbortSignal
+): Promise<any> {
+  const isLarge = file.size > 15 * 1024 * 1024;
+
+  const doUpload = (token: string) => {
+    if (isLarge) {
+      return uploadDriveFileResumable(file, folderId, token, onProgress, signal);
+    }
+    return uploadDriveFileMultipart(file, folderId, token, (percent, loaded, total) => {
+      if (onProgress) {
+        onProgress(percent, 0, null);
+      }
+    }, signal);
+  };
+
+  try {
+    return await doUpload(accessToken);
+  } catch (err: any) {
+    const isAuthError =
+      err.message?.includes('401') ||
+      err.message?.includes('Failed to fetch') ||
+      err.message?.includes('Invalid Credentials') ||
+      err.message?.includes('token');
+
+    if (isAuthError) {
+      console.warn('[Upload] Detected possible auth expiration during upload, attempting silent refresh...', err);
+      try {
+        const { useAuthStore } = await import('@/store/use-auth-store');
+        const freshToken = await useAuthStore.getState().refreshToken();
+        if (freshToken) {
+          return await doUpload(freshToken);
+        }
+      } catch (refreshErr) {
+        console.error('[Upload] Automatic token refresh failed:', refreshErr);
+      }
+    }
+    throw err;
+  }
+}
+
+/**
+ * Initiate Resumable Upload Session directly from browser with Google Drive API (legacy compatibility)
  */
 export async function initClientResumableUpload(
   fileName: string,

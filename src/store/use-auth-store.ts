@@ -25,6 +25,7 @@ interface AuthState {
   isConfigModalOpen: boolean;
 
   login: () => Promise<void>;
+  refreshToken: () => Promise<string>;
   setAuth: (accessToken: string, user: GoogleUserProfile) => void;
   setClientId: (clientId: string) => void;
   logout: () => void;
@@ -82,6 +83,17 @@ export const useAuthStore = create<AuthState>((set, get) => {
       } finally {
         set({ isLoadingFolder: false });
       }
+    },
+
+    refreshToken: async () => {
+      const { clientId, setAuth } = get();
+      const finalId = clientId || getSavedClientId();
+      if (!finalId) {
+        throw new Error('MISSING_CLIENT_ID');
+      }
+      const { accessToken, profile } = await requestGoogleAccessToken(finalId);
+      setAuth(accessToken, profile);
+      return accessToken;
     },
 
     setAuth: (accessToken, user) =>
