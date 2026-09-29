@@ -26,8 +26,6 @@ import {
   Loader2,
   Film,
   Zap,
-  AlertCircle,
-  RefreshCw,
   Tv,
 } from 'lucide-react';
 
@@ -56,7 +54,7 @@ interface VideoSlideData {
 
 /**
  * High-performance cinema video player slide supporting progressive HTTP 206 streaming
- * (starts playing immediately, buffering data as you watch) and Google Drive Preview fallback.
+ * on Desktop and Google Drive Mobile Preview streaming on Phone/Tablet.
  */
 function DriveVideoSlide({
   slide,
@@ -65,10 +63,23 @@ function DriveVideoSlide({
   slide: VideoSlideData;
   accessToken: string | null;
 }) {
-  const [mode, setMode] = useState<'stream' | 'drive'>('stream');
+  const isMobile = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  }, []);
+
+  // Default mode: on Mobile, default to 'drive' (Google Drive mobile player works 100% on phones);
+  // on Desktop PC, default to 'stream' (Progressive HTML5 Stream).
+  const [mode, setMode] = useState<'stream' | 'drive'>(() => {
+    if (typeof navigator !== 'undefined') {
+      const isMob = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      return isMob ? 'drive' : 'stream';
+    }
+    return 'drive';
+  });
+
   const [isStreamingLoading, setIsStreamingLoading] = useState(true);
   const [isIframeLoading, setIsIframeLoading] = useState(true);
-  const [streamError, setStreamError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -95,8 +106,7 @@ function DriveVideoSlide({
   };
 
   const handleStreamError = () => {
-    console.warn('[VideoPlayer] Progressive stream error, falling back to Google Drive embed player');
-    setStreamError('Không thể nạp luồng phát trực tiếp, tự động chuyển sang Google Drive Player.');
+    console.warn('[VideoPlayer] Progressive stream error on mobile/desktop, auto switching to Google Drive Player');
     setMode('drive');
   };
 
@@ -106,7 +116,7 @@ function DriveVideoSlide({
       <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-2 px-3 py-2 bg-neutral-900/80 backdrop-blur-md rounded-xl border border-white/10 text-white text-xs z-30">
         <div className="flex items-center gap-2 min-w-0">
           <Film className="w-4 h-4 text-blue-400 shrink-0" />
-          <span className="font-medium truncate max-w-[200px] sm:max-w-xs md:max-w-md">
+          <span className="font-medium truncate max-w-[180px] sm:max-w-xs md:max-w-md">
             {slide.name}
           </span>
           <span className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-neutral-300 shrink-0">
@@ -135,7 +145,6 @@ function DriveVideoSlide({
             <button
               type="button"
               onClick={() => {
-                setStreamError(null);
                 setMode('stream');
               }}
               title="Chuyển sang trình phát trực tiếp tải đến đâu xem đến đấy"
@@ -169,14 +178,14 @@ function DriveVideoSlide({
       </div>
 
       {/* Main Video Viewport Area */}
-      <div className="relative w-full aspect-video max-h-[72vh] sm:max-h-[76vh] flex items-center justify-center rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl">
+      <div className="relative w-full aspect-video max-h-[70vh] sm:max-h-[76vh] flex items-center justify-center rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl">
         {mode === 'stream' ? (
-          /* Progressive Stream Player (Loads and plays immediately, buffering chunks as you watch) */
+          /* Progressive Stream Player */
           <>
             {isStreamingLoading && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-10 pointer-events-none space-y-2">
                 <Loader2 className="w-9 h-9 text-blue-500 animate-spin" />
-                <span className="text-xs text-neutral-300 font-medium">Đang phát trực tiếp video...</span>
+                <span className="text-xs text-neutral-300 font-medium">Đang phát luồng video...</span>
                 <span className="text-[11px] text-neutral-500">Tải đến đâu xem luôn đến đấy</span>
               </div>
             )}
@@ -186,10 +195,8 @@ function DriveVideoSlide({
               src={progressiveStreamUrl}
               poster={slide.poster}
               controls
-              autoPlay
               playsInline
-              preload="auto"
-              onLoadStart={() => setIsStreamingLoading(true)}
+              preload="metadata"
               onLoadedData={() => setIsStreamingLoading(false)}
               onCanPlay={() => setIsStreamingLoading(false)}
               onPlaying={() => setIsStreamingLoading(false)}
@@ -198,10 +205,10 @@ function DriveVideoSlide({
             />
           </>
         ) : (
-          /* Google Drive Iframe Player Fallback */
+          /* Google Drive Embedded Player */
           <>
             {isIframeLoading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-10 space-y-2">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-10 space-y-2 pointer-events-none">
                 <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
                 <span className="text-xs text-neutral-400">Đang khởi chạy trình phát Google Drive...</span>
               </div>
@@ -218,6 +225,18 @@ function DriveVideoSlide({
           </>
         )}
       </div>
+
+      {/* Prominent Fullscreen Launcher for Mobile Phones */}
+      {isMobile && (
+        <button
+          type="button"
+          onClick={handleOpenGoogleDrive}
+          className="w-full mt-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 active:scale-[0.98] transition-all"
+        >
+          <ExternalLink className="w-4 h-4" />
+          <span>Mở xem toàn màn hình (Ứng dụng Google Drive)</span>
+        </button>
+      )}
 
       {/* Helper Footer Status */}
       <div className="mt-2 text-[11px] text-neutral-400 text-center flex flex-wrap items-center justify-center gap-2">

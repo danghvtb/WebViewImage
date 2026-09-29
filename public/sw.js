@@ -41,11 +41,9 @@ async function handleVideoStream(request, url) {
     const driveHeaders = new Headers();
     driveHeaders.set('Authorization', `Bearer ${token}`);
 
-    // Forward the Range header from HTML5 video element (e.g. bytes=0- or bytes=1048576-)
-    const clientRange = request.headers.get('range');
-    if (clientRange) {
-      driveHeaders.set('Range', clientRange);
-    }
+    // Always ensure a Range header is sent so Google Drive responds with 206 Partial Content
+    const clientRange = request.headers.get('range') || 'bytes=0-';
+    driveHeaders.set('Range', clientRange);
 
     const googleRes = await fetch(driveUrl, {
       method: 'GET',
@@ -70,15 +68,22 @@ async function handleVideoStream(request, url) {
       responseHeaders.set('Content-Length', contentLength);
     }
 
-    const contentRange = googleRes.headers.get('content-range');
+    let contentRange = googleRes.headers.get('content-range');
+    let finalStatus = googleRes.status;
+
+    // Strict 206 Partial Content enforcement for mobile browsers
+    if (!contentRange && contentLength) {
+      contentRange = `bytes 0-${parseInt(contentLength, 10) - 1}/${contentLength}`;
+      finalStatus = 206;
+    }
+
     if (contentRange) {
       responseHeaders.set('Content-Range', contentRange);
     }
 
-    // Return the partial stream directly to the video element
     return new Response(googleRes.body, {
-      status: googleRes.status,
-      statusText: googleRes.statusText,
+      status: finalStatus === 200 ? 206 : finalStatus,
+      statusText: 'Partial Content',
       headers: responseHeaders,
     });
   } catch (err) {
