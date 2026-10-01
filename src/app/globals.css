@@ -41,10 +41,42 @@ body {
 
 /* Lightbox customizations */
 .yarl__portal {
-  backdrop-filter: blur(12px);
+  background-color: #050505;
+}
+
+@media (min-width: 768px) {
+  .yarl__portal {
+    backdrop-filter: blur(8px);
+  }
+}
+
+.yarl__slide {
+  padding: 0 !important;
 }
 
 .yarl__slide_title {
   font-size: 0.875rem !important;
   color: #fff !important;
 }
+
+/* Mobile Lightbox optimizations */
+@media (max-width: 640px) {
+  /* Hide prev/next navigation chevrons on mobile to prevent accidental touches and clutter */
+  .yarl__navigation_prev,
+  .yarl__navigation_next {
+    display: none !important;
+  }
+
+  /* Compact toolbar buttons on mobile */
+  .yarl__toolbar {
+    padding: 2px 4px !important;
+    gap: 2px !important;
+  }
+
+  .yarl__toolbar .yarl__button {
+    padding: 6px !important;
+    width: 36px !important;
+    height: 36px !important;
+  }
+}
+

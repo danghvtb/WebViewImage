@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Lightbox from 'yet-another-react-lightbox';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
 import Fullscreen from 'yet-another-react-lightbox/plugins/fullscreen';
@@ -21,12 +21,12 @@ import { downloadDriveFile, makeFolderOrFilePublic } from '@/lib/client-drive';
 import { useAuthStore } from '@/store/use-auth-store';
 import {
   Play,
-  Download as DownloadIcon,
   ExternalLink,
   Loader2,
   Film,
   Zap,
   Tv,
+  AlertCircle,
 } from 'lucide-react';
 
 interface LightboxModalProps {
@@ -53,35 +53,28 @@ interface VideoSlideData {
 }
 
 /**
- * High-performance cinema video player slide supporting progressive HTTP 206 streaming
- * on Desktop and Google Drive Mobile Preview streaming on Phone/Tablet.
+ * True edge-to-edge cinema video player slide supporting progressive HTTP 206 streaming
+ * with native HTML5 controls on mobile/desktop, auto-hiding overlay, zero blur obscuration,
+ * and seamless Google Drive player fallback.
  */
 function DriveVideoSlide({
   slide,
   accessToken,
+  isMobile,
 }: {
   slide: VideoSlideData;
   accessToken: string | null;
+  isMobile: boolean;
 }) {
-  const isMobile = useMemo(() => {
-    if (typeof navigator === 'undefined') return false;
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  }, []);
-
-  // Default mode: on Mobile, default to 'drive' (Google Drive mobile player works 100% on phones);
-  // on Desktop PC, default to 'stream' (Progressive HTML5 Stream).
-  const [mode, setMode] = useState<'stream' | 'drive'>(() => {
-    if (typeof navigator !== 'undefined') {
-      const isMob = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      return isMob ? 'drive' : 'stream';
-    }
-    return 'drive';
-  });
-
-  const [isStreamingLoading, setIsStreamingLoading] = useState(true);
+  // Always default to 'stream' (clean HTML5 video player with progressive stream)
+  const [mode, setMode] = useState<'stream' | 'drive'>('stream');
+  const [isBuffering, setIsBuffering] = useState(false);
   const [isIframeLoading, setIsIframeLoading] = useState(true);
+  const [hasStreamError, setHasStreamError] = useState(false);
+  const [showOverlay, setShowOverlay] = useState(true);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
   const progressiveStreamUrl = useMemo(() => {
@@ -97,96 +90,169 @@ function DriveVideoSlide({
     }
   }, [slide.fileId, accessToken]);
 
-  const handleDownload = () => {
-    downloadDriveFile(slide.fileId, slide.name, accessToken);
-  };
+  const scheduleHideOverlay = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
+    hideTimerRef.current = setTimeout(() => {
+      if (videoRef.current && !videoRef.current.paused) {
+        setShowOverlay(false);
+      }
+    }, 3000);
+  }, []);
 
-  const handleOpenGoogleDrive = () => {
+  const handleUserInteraction = useCallback(() => {
+    setShowOverlay(true);
+    scheduleHideOverlay();
+  }, [scheduleHideOverlay]);
+
+  const toggleOverlay = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // If target is an interactive element (button or link), let it pass
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'BUTTON' || target.closest('button') || target.tagName === 'A') {
+      return;
+    }
+    setShowOverlay((prev) => {
+      const next = !prev;
+      if (next) {
+        scheduleHideOverlay();
+      }
+      return next;
+    });
+  }, [scheduleHideOverlay]);
+
+  const handleOpenGoogleDrive = useCallback((e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     window.open(`https://drive.google.com/file/d/${slide.fileId}/view`, '_blank');
-  };
+  }, [slide.fileId]);
 
-  const handleStreamError = () => {
-    console.warn('[VideoPlayer] Progressive stream error on mobile/desktop, auto switching to Google Drive Player');
-    setMode('drive');
-  };
+  const handleStreamError = useCallback(() => {
+    console.warn('[VideoPlayer] Stream error occurred, showing recovery card');
+    setHasStreamError(true);
+    setIsBuffering(false);
+  }, []);
 
   return (
-    <div className="relative flex flex-col items-center justify-center w-full h-full max-w-5xl mx-auto px-2 sm:px-6 py-2 select-none">
-      {/* Top Header Control Strip */}
-      <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-2 px-3 py-2 bg-neutral-900/80 backdrop-blur-md rounded-xl border border-white/10 text-white text-xs z-30">
+    <div
+      className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden select-none"
+      onClick={toggleOverlay}
+      onMouseMove={handleUserInteraction}
+      onTouchStart={handleUserInteraction}
+    >
+      {/* Floating Top Header - Sleek, non-overlapping, auto-hiding */}
+      <div
+        className={`absolute top-0 inset-x-0 z-30 flex items-center justify-between gap-2 p-2.5 sm:p-4 bg-gradient-to-b from-black/85 via-black/40 to-transparent transition-all duration-300 pointer-events-auto pr-24 sm:pr-40 ${
+          showOverlay ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Left: Video details */}
         <div className="flex items-center gap-2 min-w-0">
           <Film className="w-4 h-4 text-blue-400 shrink-0" />
-          <span className="font-medium truncate max-w-[180px] sm:max-w-xs md:max-w-md">
+          <span className="font-medium text-xs sm:text-sm text-white truncate max-w-[130px] sm:max-w-xs md:max-w-md">
             {slide.name}
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-neutral-300 shrink-0">
+          <span className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-neutral-300 shrink-0">
             {formatBytes(slide.size)}
           </span>
           {slide.durationMillis && (
-            <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] shrink-0">
+            <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-medium shrink-0">
               {formatDuration(slide.durationMillis)}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 ml-auto">
+        {/* Right: Quick actions */}
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Mode Switcher */}
           {mode === 'stream' ? (
             <button
               type="button"
-              onClick={() => setMode('drive')}
-              title="Chuyển sang trình phát nhúng Google Drive"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-200 transition-colors text-[11px]"
+              onClick={() => {
+                setHasStreamError(false);
+                setMode('drive');
+              }}
+              title="Chuyển sang Google Player"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:bg-white/30 text-neutral-200 transition-colors text-[11px]"
             >
               <Tv className="w-3.5 h-3.5 text-neutral-300" />
-              <span>Google Player</span>
+              <span className="hidden md:inline">Google Player</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={() => {
+                setHasStreamError(false);
                 setMode('stream');
               }}
-              title="Chuyển sang trình phát trực tiếp tải đến đâu xem đến đấy"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white transition-colors text-[11px]"
+              title="Chuyển sang Phát trực tiếp"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600/90 hover:bg-blue-600 active:bg-blue-700 text-white transition-colors text-[11px]"
             >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Phát trực tiếp</span>
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden md:inline">Phát trực tiếp</span>
             </button>
           )}
 
-          {/* Open in Google Drive tab */}
+          {/* Open Google Drive in new tab */}
           <button
             type="button"
             onClick={handleOpenGoogleDrive}
-            title="Mở video trong tab Google Drive mới"
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors"
+            title="Mở trên Google Drive"
+            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:bg-white/30 text-neutral-200 transition-colors"
           >
             <ExternalLink className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Download button */}
-          <button
-            type="button"
-            onClick={handleDownload}
-            title="Tải video về máy"
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors"
-          >
-            <DownloadIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Main Video Viewport Area */}
-      <div className="relative w-full aspect-video max-h-[70vh] sm:max-h-[76vh] flex items-center justify-center rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl">
+      {/* Main Video Viewport - 100% full screen edge-to-edge */}
+      <div className="w-full h-full flex items-center justify-center overflow-hidden">
         {mode === 'stream' ? (
-          /* Progressive Stream Player */
           <>
-            {isStreamingLoading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-10 pointer-events-none space-y-2">
-                <Loader2 className="w-9 h-9 text-blue-500 animate-spin" />
-                <span className="text-xs text-neutral-300 font-medium">Đang phát luồng video...</span>
-                <span className="text-[11px] text-neutral-500">Tải đến đâu xem luôn đến đấy</span>
+            {/* Non-blur, clean buffering indicator */}
+            {isBuffering && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                <div className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-black/75 border border-white/10 text-white shadow-2xl">
+                  <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                  <span className="text-xs font-medium">Đang tải video...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Error recovery card */}
+            {hasStreamError && (
+              <div className="absolute inset-0 flex items-center justify-center p-4 bg-black/85 z-20 pointer-events-auto">
+                <div className="max-w-sm w-full p-5 rounded-2xl bg-neutral-900 border border-white/10 text-center space-y-3.5 shadow-2xl">
+                  <div className="w-11 h-11 rounded-full bg-amber-500/15 text-amber-400 mx-auto flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Không thể phát trực tiếp</h3>
+                    <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                      Trình duyệt chưa hỗ trợ codec video này. Bạn có thể xem ngay bằng Google Player.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHasStreamError(false);
+                        setMode('drive');
+                      }}
+                      className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Tv className="w-3.5 h-3.5" />
+                      <span>Xem bằng Google Player</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenGoogleDrive()}
+                      className="w-full py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-neutral-200 text-xs font-medium transition-colors"
+                    >
+                      Mở trên Google Drive
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -196,78 +262,47 @@ function DriveVideoSlide({
               poster={slide.poster}
               controls
               playsInline
+              webkit-playsinline="true"
+              x5-playsinline="true"
               preload="metadata"
-              onLoadedData={() => setIsStreamingLoading(false)}
-              onCanPlay={() => setIsStreamingLoading(false)}
-              onPlaying={() => setIsStreamingLoading(false)}
+              onWaiting={() => setIsBuffering(true)}
+              onCanPlay={() => {
+                setIsBuffering(false);
+                setHasStreamError(false);
+              }}
+              onLoadedData={() => setIsBuffering(false)}
+              onPlaying={() => {
+                setIsBuffering(false);
+                setHasStreamError(false);
+                scheduleHideOverlay();
+              }}
+              onPause={() => setShowOverlay(true)}
               onError={handleStreamError}
-              className="w-full h-full object-contain bg-black"
+              className="w-full h-full max-h-[100dvh] max-w-[100vw] object-contain bg-black outline-none"
             />
           </>
         ) : (
           /* Google Drive Embedded Player */
-          <>
+          <div className="w-full h-full relative flex items-center justify-center bg-black">
             {isIframeLoading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-10 space-y-2 pointer-events-none">
-                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                <span className="text-xs text-neutral-400">Đang khởi chạy trình phát Google Drive...</span>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                <div className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-black/75 border border-white/10 text-white shadow-2xl">
+                  <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                  <span className="text-xs font-medium">Đang khởi chạy Google Player...</span>
+                </div>
               </div>
             )}
 
             <iframe
               src={`https://drive.google.com/file/d/${slide.fileId}/preview`}
               title={slide.name}
-              className="w-full h-full border-0"
+              className="w-full h-full max-h-[100dvh] max-w-[100vw] border-0 bg-black"
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
               allowFullScreen
               onLoad={() => setIsIframeLoading(false)}
             />
-          </>
+          </div>
         )}
-      </div>
-
-      {/* Prominent Fullscreen Launcher for Mobile Phones */}
-      {isMobile && (
-        <button
-          type="button"
-          onClick={handleOpenGoogleDrive}
-          className="w-full mt-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 active:scale-[0.98] transition-all"
-        >
-          <ExternalLink className="w-4 h-4" />
-          <span>Mở xem toàn màn hình (Ứng dụng Google Drive)</span>
-        </button>
-      )}
-
-      {/* Helper Footer Status */}
-      <div className="mt-2 text-[11px] text-neutral-400 text-center flex flex-wrap items-center justify-center gap-2">
-        {mode === 'stream' ? (
-          <span className="inline-flex items-center gap-1 text-emerald-400">
-            <Zap className="w-3 h-3 text-amber-400" />
-            <span>Phát luồng trực tiếp (Xem ngay không cần chờ tải hết)</span>
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-neutral-300">
-            <Tv className="w-3 h-3 text-blue-400" />
-            <span>Trình phát Google Drive</span>
-          </span>
-        )}
-        <span>•</span>
-        <button
-          type="button"
-          onClick={() => setMode(mode === 'stream' ? 'drive' : 'stream')}
-          className="text-blue-400 hover:underline"
-        >
-          {mode === 'stream' ? 'Đổi sang Google Player' : 'Đổi sang Phát trực tiếp'}
-        </button>
-        <span>•</span>
-        <button
-          type="button"
-          onClick={handleOpenGoogleDrive}
-          className="text-neutral-300 hover:text-white hover:underline inline-flex items-center gap-0.5"
-        >
-          <ExternalLink className="w-3 h-3 inline" />
-          <span>Mở trên Google Drive</span>
-        </button>
       </div>
     </div>
   );
@@ -281,6 +316,21 @@ export function LightboxModal({
 }: LightboxModalProps) {
   const isOpen = currentIndex !== null && currentIndex >= 0;
   const { accessToken } = useAuthStore();
+
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const updateMobile = () => {
+      setIsMobile(
+        typeof window !== 'undefined' &&
+          (window.innerWidth < 768 ||
+            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent))
+      );
+    };
+    updateMobile();
+    window.addEventListener('resize', updateMobile);
+    return () => window.removeEventListener('resize', updateMobile);
+  }, []);
 
   // Convert DriveMediaItems to yet-another-react-lightbox Slide format
   const slides = useMemo(() => {
@@ -368,20 +418,23 @@ export function LightboxModal({
         view: ({ index }) => onIndexChange(index),
       }}
       render={{
+        // On mobile, hide navigation chevrons to prevent accidental clicks and screen clutter
+        buttonPrev: isMobile ? () => null : undefined,
+        buttonNext: isMobile ? () => null : undefined,
         slide: ({ slide, offset }) => {
           if ((slide as any).type === 'drive-video') {
             const videoSlide = slide as unknown as VideoSlideData;
             if (offset !== 0) {
               // Preload preview poster for adjacent slides without firing multiple network streams
               return (
-                <div className="relative w-full h-full flex items-center justify-center p-4">
+                <div className="relative w-full h-full flex items-center justify-center bg-black">
                   <img
                     src={videoSlide.poster}
                     alt={videoSlide.name}
-                    className="max-w-full max-h-[75vh] object-contain rounded-xl opacity-60 pointer-events-none select-none"
+                    className="w-full h-full max-h-[100dvh] max-w-[100vw] object-contain opacity-70 pointer-events-none select-none"
                   />
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-14 h-14 rounded-full bg-blue-600/80 backdrop-blur-md flex items-center justify-center shadow-xl shadow-blue-600/40 border border-white/20">
+                    <div className="w-14 h-14 rounded-full bg-blue-600/80 flex items-center justify-center shadow-xl shadow-blue-600/40 border border-white/20">
                       <Play className="w-7 h-7 fill-white ml-0.5 text-white" />
                     </div>
                   </div>
@@ -393,11 +446,16 @@ export function LightboxModal({
               <DriveVideoSlide
                 slide={videoSlide}
                 accessToken={accessToken}
+                isMobile={isMobile}
               />
             );
           }
           return undefined; // default image slide renderer
         },
+      }}
+      carousel={{
+        padding: 0,
+        spacing: 0,
       }}
       zoom={{
         maxZoomPixelRatio: 3,
@@ -405,20 +463,23 @@ export function LightboxModal({
       }}
       thumbnails={{
         position: 'bottom',
-        width: 100,
-        height: 60,
+        hidden: isMobile, // On mobile, keep hidden by default to maximize video viewport
+        showToggle: true,
+        width: isMobile ? 70 : 100,
+        height: isMobile ? 45 : 60,
         border: 2,
         borderRadius: 6,
-        padding: 4,
-        gap: 8,
+        padding: 2,
+        gap: 6,
       }}
       animation={{
-        fade: 250,
-        swipe: 300,
+        fade: 200,
+        swipe: 250,
       }}
       styles={{
-        container: { backgroundColor: 'rgba(5, 5, 5, 0.96)' },
-        thumbnailsContainer: { backgroundColor: 'rgba(10, 10, 10, 0.85)' },
+        container: { backgroundColor: 'rgba(5, 5, 5, 0.98)' },
+        thumbnailsContainer: { backgroundColor: 'rgba(10, 10, 10, 0.9)' },
+        slide: { padding: 0 },
       }}
     />
   );
