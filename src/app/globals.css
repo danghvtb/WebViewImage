@@ -80,3 +80,13 @@ body {
   }
 }
 
+/* Force hide yet-another-react-lightbox toolbar completely when viewing video slides */
+.yarl-video-mode .yarl__toolbar,
+.yarl-video-mode .yarl__navigation_prev,
+.yarl-video-mode .yarl__navigation_next {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
