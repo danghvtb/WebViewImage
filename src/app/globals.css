@@ -80,13 +80,23 @@ body {
   }
 }
 
-/* Force hide yet-another-react-lightbox toolbar completely when viewing video slides */
-.yarl-video-mode .yarl__toolbar,
+/* Video Mode in Lightbox: Move toolbar to top-left so Close button is prominent, accessible, and never overlaps Google Drive's top-right pop-out button */
+.yarl-video-mode .yarl__toolbar {
+  position: fixed !important;
+  top: 10px !important;
+  left: 10px !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 9999 !important;
+  padding: 0 !important;
+}
+
+.yarl-video-mode .yarl__toolbar .yarl__button {
+  padding: 0 !important;
+}
+
 .yarl-video-mode .yarl__navigation_prev,
 .yarl-video-mode .yarl__navigation_next {
   display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
 }
 

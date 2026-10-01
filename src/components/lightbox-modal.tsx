@@ -179,21 +179,6 @@ function DriveVideoSlide({
       onMouseMove={handleUserInteraction}
       onTouchStart={handleUserInteraction}
     >
-      {/* Dedicated Easy-to-Tap Close Button (Top-Left, always accessible, never covers video or Google controls) */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-        title="Đóng (Esc)"
-        className={`fixed top-3 left-3 z-50 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/75 hover:bg-black/95 active:scale-90 border border-white/20 flex items-center justify-center text-white shadow-2xl transition-all duration-300 ${
-          showOverlay ? 'opacity-100 scale-100' : 'opacity-40 hover:opacity-100 scale-95'
-        }`}
-      >
-        <X className="w-5 h-5 text-white" />
-      </button>
-
       {/* Sleek Floating Top Header Overlay - Auto hides when watching */}
       <div
         className={`absolute top-0 inset-x-0 z-40 flex items-center justify-between gap-2 p-2.5 sm:p-3 bg-gradient-to-b from-black/85 via-black/45 to-transparent transition-all duration-300 pointer-events-auto ${
@@ -201,8 +186,8 @@ function DriveVideoSlide({
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Left: Clearance for Close Button (pl-12 sm:pl-14) + File Name & Duration */}
-        <div className="flex items-center gap-2 min-w-0 pl-12 sm:pl-14 pr-2">
+        {/* Left: Clearance for Top-Left Close Button (pl-14 sm:pl-16) + File Name & Duration */}
+        <div className="flex items-center gap-2 min-w-0 pl-14 sm:pl-16 pr-2">
           <Film className="w-4 h-4 text-blue-400 shrink-0 hidden sm:inline" />
           <span className="font-medium text-xs sm:text-sm text-white truncate max-w-[140px] xs:max-w-[180px] sm:max-w-xs md:max-w-md">
             {slide.name}
@@ -428,22 +413,29 @@ export function LightboxModal({
       index={currentIndex}
       slides={slides as any}
       className={isCurrentVideo ? 'yarl-video-mode' : ''}
-      plugins={isCurrentVideo ? [] : [Zoom, Fullscreen, Thumbnails, Download]}
+      plugins={[Zoom, Fullscreen, Thumbnails, Download]}
       on={{
         view: ({ index }) => onIndexChange(index),
       }}
-      toolbar={{
-        // On video slides, completely disable the default toolbar
-        buttons: isCurrentVideo ? [] : undefined,
-      }}
       render={{
-        // On video slides, hide all YARL controls (close, zoom, fullscreen, download, thumbnails)
-        buttonClose: isCurrentVideo ? () => null : undefined,
+        // Reliable custom Close Button (on video mode, positioned at top-left via .yarl-video-mode CSS)
+        buttonClose: () => (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng"
+            title="Đóng (Esc)"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/80 hover:bg-black active:scale-90 border border-white/20 flex items-center justify-center text-white shadow-2xl transition-all"
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
+        ),
+        // On video slides, suppress unnecessary buttons to keep video view completely clean
         buttonZoom: isCurrentVideo ? () => null : undefined,
         buttonFullscreen: isCurrentVideo ? () => null : undefined,
         buttonDownload: isCurrentVideo ? () => null : undefined,
         buttonThumbnails: isCurrentVideo ? () => null : undefined,
-        // On mobile or video, hide navigation chevrons to prevent accidental clicks and screen clutter
+        // On mobile or video, hide navigation chevrons to prevent accidental clicks
         buttonPrev: isMobile || isCurrentVideo ? () => null : undefined,
         buttonNext: isMobile || isCurrentVideo ? () => null : undefined,
         slide: ({ slide, offset }) => {
@@ -506,7 +498,6 @@ export function LightboxModal({
         container: { backgroundColor: 'rgba(5, 5, 5, 0.98)' },
         thumbnailsContainer: { backgroundColor: 'rgba(10, 10, 10, 0.9)' },
         slide: { padding: 0 },
-        toolbar: isCurrentVideo ? { display: 'none' } : undefined,
       }}
     />
   );
