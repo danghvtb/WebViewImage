@@ -2,12 +2,16 @@ import { create } from 'zustand';
 
 export type ColumnDensity = 'compact' | 'normal' | 'large';
 export type MediaFilter = 'all' | 'image' | 'video';
+export type SortField = 'createdTime' | 'size' | 'name';
+export type SortOrder = 'asc' | 'desc';
 
 interface MediaState {
   columnDensity: ColumnDensity;
   columnsCount: number;
   mobileColumnsCount: number;
   filter: MediaFilter;
+  sortField: SortField;
+  sortOrder: SortOrder;
   searchQuery: string;
   lightboxIndex: number | null;
   isUploadModalOpen: boolean;
@@ -20,6 +24,9 @@ interface MediaState {
   setColumnDensity: (density: ColumnDensity) => void;
   setMobileColumnsCount: (count: number | ((prev: number) => number)) => void;
   setFilter: (filter: MediaFilter) => void;
+  setSortField: (sortField: SortField) => void;
+  setSortOrder: (sortOrder: SortOrder) => void;
+  toggleSortOrder: () => void;
   setSearchQuery: (query: string) => void;
   setLightboxIndex: (index: number | null) => void;
   setUploadModalOpen: (isOpen: boolean) => void;
@@ -49,6 +56,8 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   columnsCount: 4,
   mobileColumnsCount: 2,
   filter: 'all',
+  sortField: 'createdTime',
+  sortOrder: 'desc',
   searchQuery: '',
   lightboxIndex: null,
   isUploadModalOpen: false,
@@ -69,6 +78,12 @@ export const useMediaStore = create<MediaState>((set, get) => ({
         typeof count === 'function' ? count(state.mobileColumnsCount) : count,
     })),
   setFilter: (filter) => set({ filter }),
+  setSortField: (sortField) => set({ sortField }),
+  setSortOrder: (sortOrder) => set({ sortOrder }),
+  toggleSortOrder: () =>
+    set((state) => ({
+      sortOrder: state.sortOrder === 'asc' ? 'desc' : 'asc',
+    })),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setLightboxIndex: (lightboxIndex) => set({ lightboxIndex }),
   setUploadModalOpen: (isUploadModalOpen) => set({ isUploadModalOpen }),

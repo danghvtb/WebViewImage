@@ -245,6 +245,12 @@ export function UploaderModal() {
           break;
         }
 
+        const isAuthError =
+          err.message?.includes('401') ||
+          err.message?.includes('Invalid Credentials') ||
+          err.message?.includes('invalid_grant') ||
+          err.message?.includes('Chưa đăng nhập');
+
         console.error(`[Uploader] Failed to upload ${item.file.name}:`, err);
         setQueue((prev) =>
           prev.map((it) =>
@@ -252,16 +258,44 @@ export function UploaderModal() {
               ? {
                   ...it,
                   status: 'error',
-                  errorMessage: err.message || 'Lỗi kết nối tải lên',
+                  errorMessage: isAuthError
+                    ? 'Phiên đăng nhập hết hạn (401)'
+                    : err.message || 'Lỗi kết nối tải lên',
                 }
               : it
           )
         );
+
+        if (isAuthError) {
+          // Immediately stop queue processing so it doesn't loop through all remaining files
+          isPausedRef.current = true;
+          setIsQueuePaused(true);
+          break;
+        }
       }
     }
 
     setActiveItemId(null);
     setIsProcessingQueue(false);
+  };
+
+  // Clear all error items so user can exit cleanly
+  const handleClearErrors = () => {
+    setQueue((prev) => prev.filter((item) => item.status !== 'error'));
+  };
+
+  // Retry all error items
+  const handleRetryAllErrors = () => {
+    setQueue((prev) =>
+      prev.map((it) =>
+        it.status === 'error'
+          ? { ...it, status: 'pending', progress: 0, speedMBs: 0, errorMessage: undefined }
+          : it
+      )
+    );
+    isPausedRef.current = false;
+    setIsQueuePaused(false);
+    startQueueUpload();
   };
 
   // Retry an individual failed item
@@ -454,22 +488,44 @@ export function UploaderModal() {
 
             {/* Error Token Banner if errors exist */}
             {hasErrors && (
-              <div className="mb-3 p-2.5 rounded-xl bg-red-950/40 border border-red-500/30 flex items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2 text-red-300">
+              <div className="mb-3 p-2.5 rounded-xl bg-red-950/40 border border-red-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-red-300 min-w-0">
                   <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                  <span>
+                  <span className="truncate">
                     Có {errorFiles} tệp gặp lỗi kết nối hoặc phiên đăng nhập hết hạn.
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleManualRefreshToken}
-                  disabled={isRefreshingAuth}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-800/60 hover:bg-red-700/80 text-white font-medium shrink-0 transition-colors text-[11px]"
-                >
-                  <KeyRound className="w-3 h-3" />
-                  <span>{isRefreshingAuth ? 'Đang làm mới...' : 'Làm mới phiên'}</span>
-                </button>
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <button
+                    type="button"
+                    onClick={handleManualRefreshToken}
+                    disabled={isRefreshingAuth}
+                    title="Đăng nhập lại để cập nhật phiên Google"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-800/70 hover:bg-red-700 text-white font-medium shrink-0 transition-colors text-[11px]"
+                  >
+                    <KeyRound className="w-3 h-3" />
+                    <span>{isRefreshingAuth ? 'Đang làm mới...' : 'Làm mới phiên'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRetryAllErrors}
+                    disabled={isProcessingQueue}
+                    title="Thử lại các tệp bị lỗi"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white font-medium shrink-0 transition-colors text-[11px]"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Thử lại</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearErrors}
+                    title="Xóa các tệp lỗi khỏi hàng đợi để tiếp tục hoặc thoát"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white font-medium shrink-0 transition-colors text-[11px]"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Bỏ qua lỗi</span>
+                  </button>
+                </div>
               </div>
             )}
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMediaStore } from '@/store/use-media-store';
 import { useAuthStore } from '@/store/use-auth-store';
@@ -19,6 +19,11 @@ import {
   LogIn,
   LogOut,
   Folder,
+  ArrowDownUp,
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
+  Calendar,
+  Check,
 } from 'lucide-react';
 
 export function HeaderBar() {
@@ -28,6 +33,11 @@ export function HeaderBar() {
     setColumnDensity,
     filter,
     setFilter,
+    sortField,
+    sortOrder,
+    setSortField,
+    setSortOrder,
+    toggleSortOrder,
     searchQuery,
     setSearchQuery,
     setUploadModalOpen,
@@ -47,6 +57,21 @@ export function HeaderBar() {
   } = useAuthStore();
 
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close sort menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setIsSortMenuOpen(false);
+      }
+    };
+    if (isSortMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isSortMenuOpen]);
 
   const handleSync = async () => {
     if (!isLoggedIn || !accessToken || !currentFolder) {
@@ -164,8 +189,8 @@ export function HeaderBar() {
         </div>
       </div>
 
-      {/* Middle: Search & Media Filter Tabs (Full width on mobile, centered on desktop) */}
-      <div className="flex items-center gap-2 w-full md:max-w-md md:mx-auto">
+      {/* Middle: Search, Media Filter Tabs & Sort (Full width on mobile, centered on desktop) */}
+      <div className="flex items-center gap-2 w-full md:max-w-xl lg:max-w-2xl md:mx-auto">
         {/* Search Input */}
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500" />
@@ -213,6 +238,169 @@ export function HeaderBar() {
             <Film className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             <span className="text-[11px] sm:text-xs">Video</span>
           </button>
+        </div>
+
+        {/* Sort Dropdown & Order Toggle */}
+        <div className="relative shrink-0" ref={sortMenuRef}>
+          <div className="flex items-center p-0.5 rounded-xl bg-[#161616] border border-[#2a2a2a]">
+            {/* Sort Menu Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsSortMenuOpen((prev) => !prev)}
+              title="Tùy chọn sắp xếp"
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all text-xs ${
+                isSortMenuOpen
+                  ? 'bg-neutral-800 text-white font-medium'
+                  : 'text-neutral-300 hover:text-white hover:bg-neutral-800/60'
+              }`}
+            >
+              <ArrowDownUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400" />
+              <span className="text-[11px] sm:text-xs font-medium">
+                {sortField === 'createdTime'
+                  ? 'Ngày'
+                  : sortField === 'size'
+                  ? 'Kích thước'
+                  : 'Tên'}
+              </span>
+            </button>
+
+            {/* Quick Order Toggle */}
+            <button
+              type="button"
+              onClick={toggleSortOrder}
+              title={
+                sortOrder === 'desc'
+                  ? 'Đang giảm dần (Bấm để đổi sang tăng dần)'
+                  : 'Đang tăng dần (Bấm để đổi sang giảm dần)'
+              }
+              className="p-1 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            >
+              {sortOrder === 'desc' ? (
+                <ArrowDownWideNarrow className="w-3.5 h-3.5 text-blue-400" />
+              ) : (
+                <ArrowUpNarrowWide className="w-3.5 h-3.5 text-amber-400" />
+              )}
+            </button>
+          </div>
+
+          {/* Sort Dropdown Menu */}
+          {isSortMenuOpen && (
+            <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl bg-[#181818] border border-[#2f2f2f] shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs">
+              <div className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider px-2 py-1">
+                Sắp xếp theo
+              </div>
+
+              {/* Field: Created Time */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSortField('createdTime');
+                  setIsSortMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors ${
+                  sortField === 'createdTime'
+                    ? 'bg-blue-600/20 text-blue-400 font-medium'
+                    : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Ngày tạo</span>
+                </div>
+                {sortField === 'createdTime' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+              </button>
+
+              {/* Field: Size */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSortField('size');
+                  setIsSortMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors ${
+                  sortField === 'size'
+                    ? 'bg-blue-600/20 text-blue-400 font-medium'
+                    : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <HardDrive className="w-3.5 h-3.5" />
+                  <span>Kích thước</span>
+                </div>
+                {sortField === 'size' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+              </button>
+
+              {/* Field: Name */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSortField('name');
+                  setIsSortMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors ${
+                  sortField === 'name'
+                    ? 'bg-blue-600/20 text-blue-400 font-medium'
+                    : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Tên tệp</span>
+                </div>
+                {sortField === 'name' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+              </button>
+
+              <div className="my-1.5 border-t border-neutral-800" />
+
+              <div className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider px-2 py-1">
+                Thứ tự
+              </div>
+
+              {/* Order: Descending */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSortOrder('desc');
+                  setIsSortMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors ${
+                  sortOrder === 'desc'
+                    ? 'bg-blue-600/20 text-blue-400 font-medium'
+                    : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <ArrowDownWideNarrow className="w-3.5 h-3.5" />
+                  <span>
+                    Giảm dần {sortField === 'createdTime' ? '(Mới nhất)' : sortField === 'size' ? '(Lớn nhất)' : '(Z → A)'}
+                  </span>
+                </div>
+                {sortOrder === 'desc' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+              </button>
+
+              {/* Order: Ascending */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSortOrder('asc');
+                  setIsSortMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors ${
+                  sortOrder === 'asc'
+                    ? 'bg-blue-600/20 text-blue-400 font-medium'
+                    : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <ArrowUpNarrowWide className="w-3.5 h-3.5" />
+                  <span>
+                    Tăng dần {sortField === 'createdTime' ? '(Cũ nhất)' : sortField === 'size' ? '(Nhỏ nhất)' : '(A → Z)'}
+                  </span>
+                </div>
+                {sortOrder === 'asc' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

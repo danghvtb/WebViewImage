@@ -40,6 +40,8 @@ interface AuthState {
   setIsConfigModalOpen: (isOpen: boolean) => void;
 }
 
+let activeRefreshPromise: Promise<string> | null = null;
+
 export const useAuthStore = create<AuthState>((set, get) => {
   return {
     accessToken: null,
@@ -86,14 +88,26 @@ export const useAuthStore = create<AuthState>((set, get) => {
     },
 
     refreshToken: async () => {
-      const { clientId, setAuth } = get();
-      const finalId = clientId || getSavedClientId();
-      if (!finalId) {
-        throw new Error('MISSING_CLIENT_ID');
+      if (activeRefreshPromise) {
+        return activeRefreshPromise;
       }
-      const { accessToken, profile } = await requestGoogleAccessToken(finalId);
-      setAuth(accessToken, profile);
-      return accessToken;
+
+      activeRefreshPromise = (async () => {
+        try {
+          const { clientId, setAuth } = get();
+          const finalId = clientId || getSavedClientId();
+          if (!finalId) {
+            throw new Error('MISSING_CLIENT_ID');
+          }
+          const { accessToken, profile } = await requestGoogleAccessToken(finalId);
+          setAuth(accessToken, profile);
+          return accessToken;
+        } finally {
+          activeRefreshPromise = null;
+        }
+      })();
+
+      return activeRefreshPromise;
     },
 
     setAuth: (accessToken, user) =>

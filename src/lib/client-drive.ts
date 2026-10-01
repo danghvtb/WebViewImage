@@ -414,29 +414,7 @@ export async function uploadDriveFileAuto(
     }, signal);
   };
 
-  try {
-    return await doUpload(accessToken);
-  } catch (err: any) {
-    const isAuthError =
-      err.message?.includes('401') ||
-      err.message?.includes('Failed to fetch') ||
-      err.message?.includes('Invalid Credentials') ||
-      err.message?.includes('token');
-
-    if (isAuthError) {
-      console.warn('[Upload] Detected possible auth expiration during upload, attempting silent refresh...', err);
-      try {
-        const { useAuthStore } = await import('@/store/use-auth-store');
-        const freshToken = await useAuthStore.getState().refreshToken();
-        if (freshToken) {
-          return await doUpload(freshToken);
-        }
-      } catch (refreshErr) {
-        console.error('[Upload] Automatic token refresh failed:', refreshErr);
-      }
-    }
-    throw err;
-  }
+  return await doUpload(accessToken);
 }
 
 /**

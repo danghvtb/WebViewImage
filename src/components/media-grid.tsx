@@ -26,6 +26,8 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     setMobileColumnsCount,
     selectedFileIds,
     filter,
+    sortField,
+    sortOrder,
     searchQuery,
     setUploadModalOpen,
   } = useMediaStore();
@@ -220,9 +222,9 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
     },
   });
 
-  // Client-side filtering and search
+  // Client-side filtering, search, and sorting
   const filteredItems = useMemo(() => {
-    return allItems.filter((item) => {
+    const list = allItems.filter((item) => {
       // Type filter
       if (filter === 'image' && !item.mimeType.startsWith('image/')) return false;
       if (filter === 'video' && !item.mimeType.startsWith('video/')) return false;
@@ -235,7 +237,26 @@ export function MediaGrid({ onOpenLightbox, onItemsLoaded }: MediaGridProps) {
 
       return true;
     });
-  }, [allItems, filter, searchQuery]);
+
+    return list.sort((a, b) => {
+      if (sortField === 'size') {
+        const sizeA = Number(a.size) || 0;
+        const sizeB = Number(b.size) || 0;
+        return sortOrder === 'asc' ? sizeA - sizeB : sizeB - sizeA;
+      }
+
+      if (sortField === 'name') {
+        return sortOrder === 'asc'
+          ? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+          : b.name.localeCompare(a.name, undefined, { numeric: true, sensitivity: 'base' });
+      }
+
+      // Default: 'createdTime'
+      const timeA = new Date(a.createdTime || a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdTime || b.createdAt || 0).getTime();
+      return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+    });
+  }, [allItems, filter, searchQuery, sortField, sortOrder]);
 
   // Compute allItemIds for multi-selection at top level (Rules of Hooks)
   const allItemIds = useMemo(() => filteredItems.map((item) => item.id), [filteredItems]);
