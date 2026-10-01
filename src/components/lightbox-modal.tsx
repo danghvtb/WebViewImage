@@ -21,11 +21,12 @@ import { downloadDriveFile, makeFolderOrFilePublic } from '@/lib/client-drive';
 import { useAuthStore } from '@/store/use-auth-store';
 import {
   Play,
-  ExternalLink,
   Loader2,
   Film,
   Zap,
   Tv,
+  Download as DownloadIcon,
+  X,
 } from 'lucide-react';
 
 interface LightboxModalProps {
@@ -57,17 +58,21 @@ interface VideoSlideData {
  *   without CORS, WebKit Range restrictions, or 404 errors on static hosts.
  * - On Desktop: Supports progressive HTTP 206 stream with instant auto-fallback to Google Player if any stream issue arises.
  * - Screen size is 100% maximized edge-to-edge without padding or aspect-ratio caps.
- * - Overlays auto-hide so no buttons block the video.
- * - Zero blurry backdrop-filter filters.
+ * - Top-left Close button: ergonomically placed on top-left (like YouTube/TikTok/Reels), eliminating all overlap
+ *   with Google Drive's top-right pop-out button.
+ * - Toolbar clutter eliminated: no overlapping zoom/duplicate icons.
+ * - Overlays auto-hide so no buttons block the video while watching.
  */
 function DriveVideoSlide({
   slide,
   accessToken,
   isMobile,
+  onClose,
 }: {
   slide: VideoSlideData;
   accessToken: string | null;
   isMobile: boolean;
+  onClose: () => void;
 }) {
   // Mobile devices reliably use Google Drive Player directly without CORS/Range/Codec issues on static host.
   // Desktop defaults to progressive stream, and auto-falls back to Google Player if stream fails.
@@ -141,10 +146,13 @@ function DriveVideoSlide({
     });
   }, [scheduleHideOverlay]);
 
-  const handleOpenGoogleDrive = useCallback((e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    window.open(`https://drive.google.com/file/d/${slide.fileId}/view`, '_blank');
-  }, [slide.fileId]);
+  const handleDownload = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      downloadDriveFile(slide.fileId, slide.name, accessToken);
+    },
+    [slide.fileId, slide.name, accessToken]
+  );
 
   // If progressive stream throws error, automatically and silently fall back to Google Drive Player
   const handleStreamError = useCallback(() => {
@@ -160,66 +168,74 @@ function DriveVideoSlide({
       onMouseMove={handleUserInteraction}
       onTouchStart={handleUserInteraction}
     >
-      {/* Floating Top Header - Sleek, non-overlapping, auto-hiding */}
+      {/* Sleek Floating Top Header Overlay - Auto hides when watching */}
       <div
-        className={`absolute top-0 inset-x-0 z-30 flex items-center justify-between gap-2 p-2.5 sm:p-4 bg-gradient-to-b from-black/85 via-black/40 to-transparent transition-all duration-300 pointer-events-auto pr-24 sm:pr-40 ${
+        className={`absolute top-0 inset-x-0 z-30 flex items-center justify-between gap-2 p-2.5 sm:p-4 bg-gradient-to-b from-black/90 via-black/50 to-transparent transition-all duration-300 pointer-events-auto ${
           showOverlay ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Left: Video details */}
-        <div className="flex items-center gap-2 min-w-0">
-          <Film className="w-4 h-4 text-blue-400 shrink-0" />
-          <span className="font-medium text-xs sm:text-sm text-white truncate max-w-[130px] sm:max-w-xs md:max-w-md">
-            {slide.name}
-          </span>
-          <span className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-neutral-300 shrink-0">
-            {formatBytes(slide.size)}
-          </span>
-          {slide.durationMillis && (
-            <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-medium shrink-0">
-              {formatDuration(slide.durationMillis)}
+        {/* Left: Close button + File Name & Duration */}
+        <div className="flex items-center gap-2 min-w-0 pr-2">
+          {/* Dedicated Easy-to-Tap Close Button (Top-Left, never overlaps Google's top-right button) */}
+          <button
+            type="button"
+            onClick={onClose}
+            title="Đóng (Esc)"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-neutral-900/85 hover:bg-neutral-800 active:scale-95 border border-white/20 flex items-center justify-center text-white shrink-0 shadow-lg transition-all"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5 text-neutral-200" />
+          </button>
+
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Film className="w-3.5 h-3.5 text-blue-400 shrink-0 hidden sm:inline" />
+            <span className="font-medium text-xs sm:text-sm text-white truncate max-w-[120px] xs:max-w-[160px] sm:max-w-xs md:max-w-md">
+              {slide.name}
             </span>
-          )}
+            {slide.durationMillis && (
+              <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-mono shrink-0">
+                {formatDuration(slide.durationMillis)}
+              </span>
+            )}
+            <span className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-neutral-300 shrink-0">
+              {formatBytes(slide.size)}
+            </span>
+          </div>
         </div>
 
-        {/* Right: Quick actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Right: Quick actions (With mr-12 margin reserved so Google Drive's iframe popout button is never covered!) */}
+        <div className="flex items-center gap-2 shrink-0 mr-12 sm:mr-14">
           {/* Mode Switcher */}
           {mode === 'stream' ? (
             <button
               type="button"
-              onClick={() => {
-                setMode('drive');
-              }}
+              onClick={() => setMode('drive')}
               title="Chuyển sang Google Player"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:bg-white/30 text-neutral-200 transition-colors text-[11px]"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900/85 hover:bg-neutral-800 active:scale-95 border border-white/20 text-neutral-200 transition-all text-[11px] shadow-lg"
             >
               <Tv className="w-3.5 h-3.5 text-neutral-300" />
-              <span className="hidden md:inline">Google Player</span>
+              <span className="hidden sm:inline">Google Player</span>
             </button>
           ) : (
             <button
               type="button"
-              onClick={() => {
-                setMode('stream');
-              }}
+              onClick={() => setMode('stream')}
               title="Thử phát trực tiếp qua HTML5"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:bg-white/30 text-neutral-200 transition-colors text-[11px]"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900/85 hover:bg-neutral-800 active:scale-95 border border-white/20 text-neutral-200 transition-all text-[11px] shadow-lg"
             >
               <Zap className="w-3.5 h-3.5 text-amber-300" />
-              <span className="hidden md:inline">Phát trực tiếp</span>
+              <span className="hidden sm:inline">Phát trực tiếp</span>
             </button>
           )}
 
-          {/* Open Google Drive in new tab */}
+          {/* Download button */}
           <button
             type="button"
-            onClick={handleOpenGoogleDrive}
-            title="Mở trên Google Drive"
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:bg-white/30 text-neutral-200 transition-colors"
+            onClick={handleDownload}
+            title="Tải video về máy"
+            className="w-8 h-8 rounded-full bg-neutral-900/85 hover:bg-neutral-800 active:scale-95 border border-white/20 flex items-center justify-center text-white shadow-lg shrink-0 transition-all"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
+            <DownloadIcon className="w-4 h-4 text-neutral-200" />
           </button>
         </div>
       </div>
@@ -310,6 +326,10 @@ export function LightboxModal({
     return () => window.removeEventListener('resize', updateMobile);
   }, []);
 
+  // Determine if currently viewed slide is a video
+  const currentItem = currentIndex !== null && currentIndex >= 0 ? items[currentIndex] : null;
+  const isCurrentVideo = Boolean(currentItem?.mimeType?.startsWith('video/'));
+
   // Convert DriveMediaItems to yet-another-react-lightbox Slide format
   const slides = useMemo(() => {
     return items.map((item) => {
@@ -395,7 +415,13 @@ export function LightboxModal({
       on={{
         view: ({ index }) => onIndexChange(index),
       }}
+      toolbar={{
+        // On video slides, completely disable the default toolbar to eliminate overlapping zoom/download/close clutter
+        buttons: isCurrentVideo ? [] : undefined,
+      }}
       render={{
+        // On video slides, hide the default top-right close button (DriveVideoSlide renders a top-left close button)
+        buttonClose: isCurrentVideo ? () => null : undefined,
         // On mobile, hide navigation chevrons to prevent accidental clicks and screen clutter
         buttonPrev: isMobile ? () => null : undefined,
         buttonNext: isMobile ? () => null : undefined,
@@ -425,6 +451,7 @@ export function LightboxModal({
                 slide={videoSlide}
                 accessToken={accessToken}
                 isMobile={isMobile}
+                onClose={onClose}
               />
             );
           }
